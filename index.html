@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#020203" />
+    <title>Break That Denim</title>
+    <meta
+      name="description"
+      content="Experience a realistic denim tear simulation. Interact with virtual denim and explore the look and feel of tearing fabric in your browser."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://denim.scottsun.io" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Denim" />
+    <meta property="og:title" content="Denim — Realistic Denim Tear Simulation" />
+    <meta
+      property="og:description"
+      content="Experience a realistic denim tear simulation. Interact with virtual denim and explore the look and feel of tearing fabric in your browser."
+    />
+    <meta property="og:url" content="https://denim.scottsun.io" />
+    <meta property="og:image" content="https://denim.scottsun.io/og_image.jpeg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:alt" content="Denim tear simulation preview" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Denim — Realistic Denim Tear Simulation" />
+    <meta
+      name="twitter:description"
+      content="Experience a realistic denim tear simulation. Interact with virtual denim and explore the look and feel of tearing fabric in your browser."
+    />
+    <meta name="twitter:image" content="https://denim.scottsun.io/og_image.jpeg" />
+    <meta name="twitter:image:alt" content="Denim tear simulation preview" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@500;600&display=swap"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body class="loading">
+    <header class="brand" aria-label="Break That Denim">
+      <span class="brand-kicker" aria-hidden="true">Break that</span>
+      <span class="brand-word" aria-hidden="true"
+        ><span class="brand-half brand-top">Denim</span><span class="brand-half brand-bottom">Denim</span></span
+      >
+      <span class="brand-stitch" aria-hidden="true"></span>
+    </header>
+    <div class="loader" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span class="loader-rows loader-track"></span>
+      <span class="loader-rows loader-fill"></span>
+      <span class="loader-needle"></span>
+    </div>
+    <div class="dock">
+      <ul class="experiences" id="experiences" role="menu" aria-label="Experiences" hidden>
+        <li role="none">
+          <button class="experience" type="button" role="menuitem" data-experience="beneath">Smilie</button>
+        </li>
+        <li role="none" class="experiences-rule" aria-hidden="true"></li>
+        <li role="none">
+          <button
+            class="experience fabric"
+            type="button"
+            role="menuitemradio"
+            aria-checked="false"
+            data-fabric="burlap"
+          >
+            Burlap
+          </button>
+        </li>
+        <li role="none">
+          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="true" data-fabric="denim">
+            Denim
+          </button>
+        </li>
+      </ul>
+      <button
+        class="menu"
+        type="button"
+        aria-label="Experiences"
+        title="Experiences"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-controls="experiences"
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M2.8 12s3.4-6 9.2-6 9.2 6 9.2 6-3.4 6-9.2 6-9.2-6-9.2-6z" />
+          <circle cx="12" cy="12" r="2.6" />
+        </svg>
+      </button>
+      <button
+        class="tool"
+        type="button"
+        aria-label="Knife"
+        title="Knife: drag across the denim to cut it"
+        aria-pressed="false"
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M3 17.2 13.9 6.3l3.1 3.1-6.1 6.1c-1.6 1.6-3.8 2.5-6.1 2.5H3z" />
+          <path d="m13.9 6.3 3.4-3.4 3.1 3.1-3.4 3.4" />
+        </svg>
+        <span>Knife</span>
+      </button>
+      <button class="reset" type="button" aria-label="Reset the denim" title="Reset the denim">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M19.4 13.1a7.5 7.5 0 1 1-2.1-6.4" />
+          <path d="M18.3 3.4v3.9h-3.9" />
+        </svg>
+        <span>Reset</span>
+      </button>
+    </div>
+    <div class="status" role="status" aria-live="polite"></div>
+  </body>
+</html>
