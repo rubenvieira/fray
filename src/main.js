@@ -1,3 +1,4 @@
+import { ArrayBufferTarget, Muxer } from "mp4-muxer";
 var e = new URL(`./worklet.js`, import.meta.url).href,
   t = 0.05;
 function n(e, n) {
@@ -98,6 +99,8 @@ var o = `/fabric_tear_sound_sample.mp3`,
     context = null;
     starting = null;
     node = null;
+    // every voice plays through this bus (a clip recording taps it)
+    master = null;
     connect;
     recording;
     staged = new Map();
@@ -120,6 +123,8 @@ var o = `/fabric_tear_sound_sample.mp3`,
       if (this.starting || typeof AudioContext > `u` || typeof AudioWorkletNode > `u`) return;
       let t = new AudioContext({ latencyHint: `interactive` });
       ((this.context = t),
+        (this.master = t.createGain()),
+        this.master.connect(t.destination),
         t.resume().catch(() => {}),
         (this.starting = t.audioWorklet
           .addModule(e)
@@ -129,7 +134,7 @@ var o = `/fabric_tear_sound_sample.mp3`,
               numberOfOutputs: 1,
               outputChannelCount: [2],
             });
-            e.connect(t.destination);
+            e.connect(this.master);
             this.node = e;
             let n = new MessageChannel();
             (e.port.postMessage({ records: n.port1 }, [n.port1]),
@@ -196,7 +201,7 @@ var o = `/fabric_tear_sound_sample.mp3`,
           let r = t.createBufferSource();
           ((r.buffer = n), (r.loop = !0));
           let i = t.createGain();
-          (r.connect(i).connect(t.destination),
+          (r.connect(i).connect(this.master),
             r.start(t.currentTime, (t.currentTime - e) % n.duration),
             this.track(r),
             (this.ambient = { src: r, gain: i }));
@@ -217,7 +222,7 @@ var o = `/fabric_tear_sound_sample.mp3`,
         this.stagedBuffer(t, s).then((r) => {
           if (!r) return;
           let i = t.createBufferSource();
-          ((i.buffer = r), i.connect(t.destination));
+          ((i.buffer = r), i.connect(this.master));
           let a = t.currentTime,
             o = Math.max(a, this.laughEnd),
             s = Math.min(e.to, r.duration) - e.from;
@@ -251,7 +256,7 @@ var o = `/fabric_tear_sound_sample.mp3`,
         s.gain.linearRampToValueAtTime(i, a + l),
         s.gain.setValueAtTime(i, a + r - l),
         s.gain.linearRampToValueAtTime(0, a + r),
-        o.connect(s).connect(e.destination),
+        o.connect(s).connect(this.master),
         o.start(a, n, r),
         this.track(o));
     }
@@ -442,7 +447,11 @@ function onWorkerMessage(e) {
         ? (m.style.cursor = t.cursor)
         : t.type === `stats`
           ? onStats(t.stats)
-          : t.type === `capture` && onCapture(t.blob);
+          : t.type === `capture`
+            ? onCapture(t.blob)
+            : t.type === `video`
+              ? onVideoChunk(t.chunk, t.meta)
+              : t.type === `record` && onRecordState(t);
 }
 function onWorkerError(e) {
   (x(`The fabric engine stopped unexpectedly.`), console.error(e));
@@ -453,7 +462,7 @@ function onWorkerError(e) {
 function startWorker(name) {
   ((fabric = name), resetShred());
   if (S) {
-    (S.terminate(), w.cue({ kind: `stop` }));
+    (abortRecording(), S.terminate(), w.cue({ kind: `stop` }));
     let e = document.createElement(`canvas`);
     ((e.className = `stage`), m.replaceWith(e), (m = e));
   }
@@ -609,6 +618,12 @@ async function onCapture(e) {
   cardFile = new File([t], `fray-${fabric}.png`, { type: `image/png` });
   let n = shareText();
   ((sheetImg.src = cardUrl),
+    (sheetImg.hidden = !1),
+    (sheetVideo.hidden = !0),
+    (sheetVideo.src = ``),
+    (sheetHint.hidden = !0),
+    (sheetSave.textContent = `Save image`),
+    (sheet.dataset.kind = `image`),
     (sheetText.textContent = n),
     (sheetX.href = `https://x.com/intent/post?text=${encodeURIComponent(n)}`),
     (sheetSave.href = cardUrl),
@@ -618,7 +633,7 @@ async function onCapture(e) {
     sheetX.focus());
 }
 function closeSheet() {
-  sheet.hidden || ((sheet.hidden = !0), shareButton.focus());
+  sheet.hidden || ((sheet.hidden = !0), sheetVideo.pause(), shareButton.focus());
 }
 (shareButton.addEventListener(`click`, () => {
   (w.unlock(), requestCard());
@@ -629,7 +644,11 @@ function closeSheet() {
   }),
   sheetShare.addEventListener(`click`, async () => {
     try {
-      await navigator.share({ files: [cardFile], text: shareText(), title: BRAND });
+      await navigator.share({
+        files: [sheet.dataset.kind === `video` ? clipFile : cardFile],
+        text: shareText(),
+        title: BRAND,
+      });
     } catch {}
   }));
 
@@ -642,17 +661,213 @@ function shortcut(e) {
     return;
   }
   if (!sheet.hidden) return;
-  t === `k`
-    ? toolButton.click()
-    : t === `r`
-      ? g.click()
-      : t === `s`
-        ? requestCard()
-        : t === `f` &&
-          fabricButtons.length &&
-          fabricButtons[
-            (fabricButtons.findIndex((e) => e.dataset.fabric === fabric) + 1) % fabricButtons.length
-          ].click();
+  t === `v`
+    ? recordButton.click()
+    : t === `k`
+      ? toolButton.click()
+      : t === `r`
+        ? g.click()
+        : t === `s`
+          ? requestCard()
+          : t === `f` &&
+            fabricButtons.length &&
+            fabricButtons[
+              (fabricButtons.findIndex((e) => e.dataset.fabric === fabric) + 1) % fabricButtons.length
+            ].click();
 }
 
 startWorker(fabric);
+
+// ---------------------------------------------------------------- clip recording
+// The worker encodes the canvas (H.264, WebCodecs) and streams the chunks here; the page taps the
+// sound bus, encodes it to AAC, and muxes both into an MP4 (the format X takes) with mp4-muxer.
+var recordButton = document.querySelector(`.record`),
+  recordTime = recordButton.querySelector(`span`),
+  sheetVideo = sheet.querySelector(`.sheet-video`),
+  sheetHint = sheet.querySelector(`.sheet-hint`),
+  rec = null,
+  clipFile = null,
+  clipUrl = null;
+function onRecordState(e) {
+  if (e.state === `started`) {
+    if (!rec || rec.muxer) return;
+    ((rec.width = e.width), (rec.height = e.height), (rec.maxSeconds = e.maxSeconds));
+    rec.muxer = new Muxer({
+      target: new ArrayBufferTarget(),
+      video: { codec: `avc`, width: e.width, height: e.height },
+      audio: rec.audio ? { codec: `aac`, sampleRate: rec.audio.sampleRate, numberOfChannels: 2 } : void 0,
+      fastStart: `in-memory`,
+      firstTimestampBehavior: `offset`,
+    });
+    for (let [e, t] of rec.queuedAudio) rec.muxer.addAudioChunk(e, t);
+    ((rec.queuedAudio.length = 0),
+      (rec.startedAt = performance.now()),
+      recordButton.setAttribute(`aria-pressed`, `true`),
+      tickRecord());
+    rec.timer = setTimeout(() => stopRecording(), 1e3 * e.maxSeconds + 200);
+  } else if (e.state === `stopped`) rec && finishRecording(e);
+  else if (e.state === `failed`) {
+    (abortRecording(),
+      (h.textContent = e.message ?? `Recording failed.`),
+      h.classList.add(`visible`),
+      setTimeout(() => h.classList.remove(`visible`), 2600));
+  }
+}
+// chunks keep coming after Stop (the encoder's flush) until the worker reports `stopped`
+function onVideoChunk(e, t) {
+  if (!rec?.muxer) return;
+  (rec.muxer.addVideoChunk(e, t), rec.samples++);
+}
+function tickRecord() {
+  if (!rec || rec.stopped) return;
+  ((recordTime.textContent = fmtTime((performance.now() - rec.startedAt) / 1e3)),
+    (rec.raf = requestAnimationFrame(tickRecord)));
+}
+// tap the sound bus: MediaStreamTrackProcessor -> AudioEncoder (AAC) -> muxer
+async function startAudioCapture() {
+  let e = w.context,
+    t = w.master;
+  if (!e || !t || typeof MediaStreamTrackProcessor > `u` || typeof AudioEncoder > `u`) return null;
+  // some builds (Linux) have no AAC encoder: the clip then goes without sound rather than with an empty track
+  try {
+    if (
+      !(
+        await AudioEncoder.isConfigSupported({
+          codec: `mp4a.40.2`,
+          sampleRate: e.sampleRate,
+          numberOfChannels: 2,
+          bitrate: 128e3,
+        })
+      ).supported
+    )
+      return null;
+  } catch {
+    return null;
+  }
+  let n = e.createMediaStreamDestination();
+  t.connect(n);
+  let r = n.stream.getAudioTracks()[0],
+    i = new MediaStreamTrackProcessor({ track: r }),
+    a = new AudioEncoder({
+      output: (e, t) => {
+        rec && (rec.muxer ? rec.muxer.addAudioChunk(e, t) : rec.queuedAudio.push([e, t]));
+      },
+      error: (e) => console.warn(`audio encoder`, e),
+    });
+  try {
+    a.configure({ codec: `mp4a.40.2`, sampleRate: e.sampleRate, numberOfChannels: 2, bitrate: 128e3 });
+  } catch (e) {
+    // no AAC encoder here (some Linux builds): the clip goes without sound
+    (console.warn(`audio encoder`, e), t.disconnect(n), r.stop());
+    return null;
+  }
+  let o = i.readable.getReader(),
+    s = !1,
+    c = (async () => {
+      for (;;) {
+        let { value: e, done: t } = await o.read();
+        if (t || !e) break;
+        if (s) {
+          e.close();
+          break;
+        }
+        try {
+          a.state === `configured` && a.encode(e);
+        } catch {}
+        e.close();
+      }
+    })();
+  return {
+    sampleRate: e.sampleRate,
+    async stop() {
+      s = !0;
+      try {
+        await o.cancel();
+      } catch {}
+      await c;
+      try {
+        (await a.flush(), a.close());
+      } catch {}
+      (t.disconnect(n), r.stop());
+    },
+  };
+}
+async function startRecording() {
+  if (rec) return;
+  (w.unlock(), P(!1), closeSheet());
+  let e = (rec = {
+    muxer: null,
+    audio: null,
+    queuedAudio: [],
+    startedAt: 0,
+    stopped: !1,
+    timer: 0,
+    raf: 0,
+    samples: 0,
+  });
+  recordButton.setAttribute(`aria-busy`, `true`);
+  let t = await startAudioCapture();
+  if (rec !== e) {
+    t?.stop().catch(() => {});
+    return;
+  }
+  ((e.audio = t), C({ type: `record`, action: `start` }));
+}
+function stopRecording() {
+  if (!rec || rec.stopped) return;
+  ((rec.stopped = !0), clearTimeout(rec.timer), cancelAnimationFrame(rec.raf));
+  ((recordTime.textContent = `…`), C({ type: `record`, action: `stop` }));
+}
+function abortRecording() {
+  if (!rec) return;
+  let e = rec;
+  ((rec = null), (e.stopped = !0), clearTimeout(e.timer), cancelAnimationFrame(e.raf), e.audio?.stop().catch(() => {}));
+  ((recordTime.textContent = ``),
+    recordButton.setAttribute(`aria-pressed`, `false`),
+    recordButton.removeAttribute(`aria-busy`));
+}
+async function finishRecording(e) {
+  let t = rec;
+  rec = null;
+  ((recordTime.textContent = ``),
+    recordButton.setAttribute(`aria-pressed`, `false`),
+    recordButton.removeAttribute(`aria-busy`));
+  t.audio && (await t.audio.stop());
+  if (!t.muxer || !t.samples) {
+    ((h.textContent = `Nothing was recorded.`),
+      h.classList.add(`visible`),
+      setTimeout(() => h.classList.remove(`visible`), 2600));
+    return;
+  }
+  let n;
+  try {
+    (t.muxer.finalize(), (n = new Blob([t.muxer.target.buffer], { type: `video/mp4` })));
+  } catch (e) {
+    (console.warn(`mux`, e),
+      (h.textContent = `Could not finish the clip.`),
+      h.classList.add(`visible`),
+      setTimeout(() => h.classList.remove(`visible`), 2600));
+    return;
+  }
+  (clipUrl && URL.revokeObjectURL(clipUrl), (clipUrl = URL.createObjectURL(n)));
+  clipFile = new File([n], `fray-${fabric}.mp4`, { type: `video/mp4` });
+  shred.startedAt && !shred.frozenAt && (shred.frozenAt = performance.now());
+  let r = shareText();
+  ((sheetVideo.src = clipUrl),
+    (sheetVideo.hidden = !1),
+    (sheetImg.hidden = !0),
+    (sheetText.textContent = r),
+    (sheetX.href = `https://x.com/intent/post?text=${encodeURIComponent(r)}`),
+    (sheetSave.href = clipUrl),
+    (sheetSave.download = clipFile.name),
+    (sheetSave.textContent = `Save video`),
+    (sheetHint.hidden = !1),
+    (sheetShare.hidden = !(navigator.canShare && navigator.canShare({ files: [clipFile] }))),
+    (sheet.dataset.kind = `video`),
+    (sheet.hidden = !1),
+    sheetVideo.play().catch(() => {}),
+    sheetX.focus());
+}
+recordButton.addEventListener(`click`, () => {
+  rec ? stopRecording() : startRecording();
+});

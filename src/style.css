@@ -554,3 +554,87 @@ body.loading .score {
 .sheet-actions > [hidden] {
   display: none;
 }
+
+/* ---------------------------------------------------------------- record button */
+.record {
+  justify-content: center;
+  min-width: 44px;
+  padding: 0;
+  gap: 8px;
+}
+.record svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7px;
+  flex: none;
+}
+.record .record-dot {
+  fill: currentColor;
+  stroke: none;
+  transition: fill 0.2s;
+}
+.record span:empty {
+  display: none;
+}
+.record span {
+  padding-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.record:hover,
+.record:focus-visible {
+  color: var(--paper);
+  background: #161b28b8;
+  border-color: #e9ebf138;
+}
+.record:hover:before,
+.record:focus-visible:before {
+  border-color: var(--thread);
+}
+.record[aria-pressed="true"] {
+  color: #ff5a4e;
+  padding: 0 6px 0 10px;
+}
+.record[aria-pressed="true"] .record-dot {
+  animation: 1s ease-in-out infinite blink;
+}
+.record[aria-busy="true"]:before {
+  animation: 0.9s ease-in-out infinite seam;
+}
+@keyframes blink {
+  50% {
+    fill: #ff5a4e40;
+  }
+}
+.record:active {
+  transform: scale(0.97);
+}
+.record:focus-visible {
+  outline: 2px solid var(--thread);
+  outline-offset: 3px;
+}
+.sheet-video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+  background: var(--ink);
+}
+.sheet-video[hidden],
+.sheet-img[hidden] {
+  display: none;
+}
+.sheet-hint {
+  font:
+    12px/1.4 system-ui,
+    -apple-system,
+    sans-serif;
+  color: var(--paper-dim);
+  margin: 10px 4px 10px;
+}
+.sheet-hint[hidden] {
+  display: none;
+}
+.sheet-actions-end {
+  margin-top: 0;
+}

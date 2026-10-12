@@ -93,6 +93,13 @@
           <circle cx="12" cy="12" r="2.6" />
         </svg>
       </button>
+      <button class="record" type="button" aria-label="Record a clip" title="Record a clip (V)" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <circle class="record-dot" cx="12" cy="12" r="5.5" />
+          <circle cx="12" cy="12" r="9" />
+        </svg>
+        <span></span>
+      </button>
       <button class="share" type="button" aria-label="Share" title="Share your damage">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
           <path d="M12 3.5v12" />
@@ -130,11 +137,17 @@
     <div class="sheet" role="dialog" aria-modal="true" aria-label="Share your damage" hidden>
       <div class="sheet-card">
         <img class="sheet-img" alt="Your shredded fabric" />
+        <video class="sheet-video" controls playsinline loop muted hidden></video>
         <p class="sheet-text"></p>
         <div class="sheet-actions">
           <a class="sheet-x" href="#" target="_blank" rel="noopener">Post on X</a>
           <button class="sheet-share" type="button" hidden>Share…</button>
           <a class="sheet-save" href="#" download="fray.png">Save image</a>
+        </div>
+        <p class="sheet-hint" hidden>
+          Posting from the web can't attach the clip for you: save it, then add it to your post.
+        </p>
+        <div class="sheet-actions sheet-actions-end">
           <button class="sheet-close" type="button">Close</button>
         </div>
       </div>

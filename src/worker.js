@@ -14421,6 +14421,116 @@ async function Ln() {
     return null;
   }
 }
+// Clip recorder: frames of the WebGPU canvas encoded to H.264 (WebCodecs) at up to RECORD_FPS and
+// posted to the page as they come, which muxes them (with the sound) into an MP4. A frame is taken
+// right after the frame's submit, while the canvas still shows it.
+const RECORD_FPS = 30,
+  RECORD_BITRATE = 7e6,
+  RECORD_MAX_S = 20;
+var ClipRecorder = class {
+  width;
+  height;
+  encoder = null;
+  t0 = 0;
+  last = -1 / 0;
+  frames = 0;
+  constructor(e, t) {
+    ((this.width = e & -2), (this.height = t & -2));
+  }
+  async start() {
+    if (typeof VideoEncoder > `u` || typeof VideoFrame > `u`)
+      return (this.fail(`This browser cannot encode video.`), !1);
+    let e = {
+      codec: `avc1.640028`,
+      width: this.width,
+      height: this.height,
+      bitrate: RECORD_BITRATE,
+      framerate: RECORD_FPS,
+      latencyMode: `realtime`,
+      avc: { format: `avc` },
+    };
+    try {
+      let t = await VideoEncoder.isConfigSupported(e);
+      if (!t.supported) {
+        e.codec = `avc1.4d0028`;
+        if (!(await VideoEncoder.isConfigSupported(e)).supported)
+          return (this.fail(`H.264 encoding is not available here.`), !1);
+      }
+    } catch (e) {
+      return (this.fail(`H.264 encoding is not available here.`), !1);
+    }
+    let t = new VideoEncoder({
+      // the metadata's VideoColorSpace is a platform object structured clone refuses: send a plain copy
+      output: (e, t) => {
+        let n = t?.decoderConfig,
+          r = n?.colorSpace;
+        X({
+          type: `video`,
+          chunk: e,
+          meta: n
+            ? {
+                decoderConfig: {
+                  codec: n.codec,
+                  codedWidth: n.codedWidth,
+                  codedHeight: n.codedHeight,
+                  description: n.description,
+                  colorSpace: r
+                    ? { primaries: r.primaries, transfer: r.transfer, matrix: r.matrix, fullRange: r.fullRange }
+                    : void 0,
+                },
+              }
+            : {},
+        });
+      },
+      error: (e) => (console.warn(`recorder`, e), this.fail(`Recording failed.`)),
+    });
+    return (
+      t.configure(e),
+      (this.encoder = t),
+      (this.t0 = performance.now()),
+      X({
+        type: `record`,
+        state: `started`,
+        width: this.width,
+        height: this.height,
+        fps: RECORD_FPS,
+        maxSeconds: RECORD_MAX_S,
+      }),
+      !0
+    );
+  }
+  fail(e) {
+    ((this.encoder = null), X({ type: `record`, state: `failed`, message: e }));
+  }
+  frame(e, t) {
+    let n = this.encoder;
+    if (!n || !e || n.state !== `configured`) return;
+    let r = t - this.t0;
+    if (r - this.last < 1e3 / RECORD_FPS - 0.5 || n.encodeQueueSize > 3) return;
+    if (r > 1e3 * RECORD_MAX_S) return;
+    let i;
+    try {
+      i = new VideoFrame(e, {
+        timestamp: Math.round(1e3 * r),
+        visibleRect: { x: 0, y: 0, width: this.width, height: this.height },
+      });
+    } catch (e) {
+      (console.warn(`recorder: frame`, e), this.fail(`Recording failed.`));
+      return;
+    }
+    ((this.last = r), n.encode(i, { keyFrame: this.frames % (2 * RECORD_FPS) === 0 }), this.frames++, i.close());
+  }
+  async stop() {
+    let e = this.encoder;
+    this.encoder = null;
+    if (e)
+      try {
+        (await e.flush(), e.close());
+      } catch {}
+    X({ type: `record`, state: `stopped`, frames: this.frames, seconds: this.last / 1e3 });
+  }
+};
+
 // settle substeps after a warm start from the denim's drape
 const WARM_SETTLE = 48;
 const Q = Dt.h,
@@ -14464,6 +14574,8 @@ const Q = Dt.h,
     // a frame capture (share card) was asked for: taken with the next frame
     captureWanted = !1;
     capturePending = null;
+    // clip recorder (WebCodecs): the canvas encoded to H.264 at up to 30 fps while recording
+    recorder = null;
     statsDirty = !1;
     // settle substeps when no drape file matches (dev: ?settle=N on the page shortens it)
     settleSteps = 420;
@@ -15017,7 +15129,7 @@ const Q = Dt.h,
         r === 0 && !this.dirty)
       )
         return;
-      ((this.dirty = !1), (this.lastPresent = e), r > 0 && this.updateAnchors());
+      ((this.dirty = !!this.recorder), (this.lastPresent = e), r > 0 && this.updateAnchors());
       let i = r > 0 && this.acoustic?.begin() ? this.acoustic : null,
         a = Rn(e);
       for (let e = 0; e < r; e++) {
@@ -15040,6 +15152,7 @@ const Q = Dt.h,
         this.captureWanted && this.encodeCapture(o, this.frameTexture),
         this.device.queue.submit([o.finish()]),
         this.captureIfRequested(),
+        this.recorder?.frame(this.canvas, e),
         this.stage?.done && this.endExperience(!0, e),
         (this.inFlight = !0),
         this.device.queue.onSubmittedWorkDone().then(() => (this.inFlight = !1)),
@@ -15113,6 +15226,18 @@ const Q = Dt.h,
             } catch {}
           },
         );
+    }
+    async record(e) {
+      if (e === `start`) {
+        if (this.recorder || !this.ready || !this.canvas) return;
+        let e = new ClipRecorder(this.canvas.width, this.canvas.height);
+        this.recorder = e;
+        (await e.start()) ? (this.dirty = !0) : this.recorder === e && (this.recorder = null);
+      } else {
+        let e = this.recorder;
+        this.recorder = null;
+        e && (await e.stop());
+      }
     }
     capture() {
       ((this.captureWanted = !0), (this.dirty = !0));
@@ -15201,6 +15326,9 @@ In.onmessage = (t) => {
       break;
     case `capture`:
       $.capture();
+      break;
+    case `record`:
+      $.record(n.action);
       break;
     case `experience`:
       $.experience(n.name);
