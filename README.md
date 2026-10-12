@@ -47,7 +47,7 @@ src/worker.js              WebGPU engine (runs in a module Worker): cloth/thread
                            pipelines, floor + fabric renderer, camera, the "Smilie" staged experience
 src/worklet.js             AudioWorkletProcessor `tear-voice`: granular tear-sound synthesis driven by
                            fracture/pan/cut records streamed from the worker
-public/drape.bin           pre-computed resting drape of the denim (drape-burlap.bin: of the burlap)
+public/drape*.bin          pre-computed resting drape of each fabric (denim: drape.bin)
 public/texture/floor_*     floor PBR maps (base color, normal, roughness, AO)
 public/models/smilie.glb   model for the "Smilie" experience
 public/stage/smilie.clip   staged animation clip for the experience
@@ -77,28 +77,32 @@ public/logo.png, og_image.jpeg, robots.txt
 7. Fabrics are presets (`FABRICS` in `src/worker.js`): yarn mechanics, weave (twill repeat / warp-over), node
    bundling and wear. The renderer branches on the material id in the layer uniform for the yarn, rim-fibre
    and fray colours. Switching fabric restarts the worker on a fresh canvas so the old GPU device is released.
-   Each fabric ships its settled rest state (`public/drape*.bin`); without one the solver settles on load.
+   Each fabric ships its settled rest state (`public/drape*.bin`); without one the engine warm-starts from
+   the denim's drape and settles briefly.
 
-### Generating a drape file
+### Drape files and the warm start
 
-`public/drape.bin` is the denim's settled rest state; the loader skips the 420-substep settle when the file's
-scene hash matches. The other fabrics ship without one yet, so they settle on first load (a few seconds on a real GPU,
-shown as the loader holding at 70%). To generate `public/drape-burlap.bin`, open the page on a WebGPU
-machine, pick the fabric, wait for it to finish loading, then run in the console (naming the file
-`drape-<fabric>.bin`):
+`public/drape.bin` is the denim's settled rest state; the loader skips the 420-substep settle when the
+file's scene hash matches. Every other fabric ships its own `public/drape-<fabric>.bin`, so all of them
+load the same way. If a fabric's file is missing or stale (its preset changed), the engine warm-starts
+instead: every fabric is the same sheet with the same pinned border and lattice mapping, so the denim's
+drape is resampled onto the new lattice and relaxed with a 48-substep settle (well under a second on a
+real GPU, with the loader holding at 70%). Only with no denim drape at all does it settle from flat.
+
+To regenerate a drape file after changing a preset, open the page on a WebGPU machine, pick the fabric,
+wait for it to finish loading, then run in the console and save the download into `public/`:
 
 ```js
 __fabricDev({ op: "drape" }).then((b) => {
   const a = Object.assign(document.createElement("a"), {
     href: URL.createObjectURL(new Blob([b])),
-    download: "drape-burlap.bin",
+    download: "drape-<fabric>.bin",
   });
   a.click();
 });
 ```
 
-Save the download into `public/`. A file whose scene hash no longer matches (after changing the preset) is
-ignored and the solver settles again. `?settle=N` on the page URL shortens the settle for development.
+`?settle=N` on the page URL shortens the settle for development.
 
 ## Dev hook
 

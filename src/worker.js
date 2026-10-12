@@ -12252,9 +12252,9 @@ const FABRICS = {
     sizeV: 0.4,
     z: 0,
     angle: 0.06,
-    compressU: 0.02,
+    compressU: 0.025,
     compressV: -0.002,
-    shear: 0.05,
+    shear: 0.06,
     collarRows: 2,
     wear: {
       center: [0.01, -0.006],
@@ -12278,9 +12278,9 @@ const FABRICS = {
     sizeV: 0.4,
     z: 0,
     angle: 0.06,
-    compressU: 0.02,
+    compressU: 0.025,
     compressV: -0.002,
-    shear: 0.05,
+    shear: 0.06,
     collarRows: 2,
     wear: {
       center: [0.01, -0.006],
@@ -12304,9 +12304,9 @@ const FABRICS = {
     sizeV: 0.4,
     z: 0,
     angle: 0.06,
-    compressU: 0.02,
+    compressU: 0.025,
     compressV: -0.002,
-    shear: 0.05,
+    shear: 0.06,
     collarRows: 2,
     wear: {
       center: [0.01, -0.006],
@@ -12330,9 +12330,9 @@ const FABRICS = {
     sizeV: 0.4,
     z: 0,
     angle: 0.06,
-    compressU: 0.022,
+    compressU: 0.025,
     compressV: -0.002,
-    shear: 0.05,
+    shear: 0.06,
     collarRows: 2,
     wear: {
       center: [0.01, -0.006],
@@ -12369,7 +12369,7 @@ async function $t(e, t, steps = 420) {
       let i = e.createCommandEncoder({ label: `settle` });
       if (
         (t.encodeSubstep(i),
-        n % 10 == 9 && n < steps - 60 && i.clearBuffer(t.v),
+        n % 10 == 9 && n < steps - Math.min(60, steps >> 2) && i.clearBuffer(t.v),
         e.queue.submit([i.finish()]),
         n % 2 == 1)
       ) {
@@ -14421,6 +14421,8 @@ async function Ln() {
     return null;
   }
 }
+// settle substeps after a warm start from the denim's drape
+const WARM_SETTLE = 48;
 const Q = Dt.h,
   Rn = (e) => performance.timeOrigin + e,
   $ = new (class {
@@ -14465,6 +14467,8 @@ const Q = Dt.h,
     statsDirty = !1;
     // settle substeps when no drape file matches (dev: ?settle=N on the page shortens it)
     settleSteps = 420;
+    // how the rest state was reached: `file` (drape file), `warm` (resampled denim drape + short settle), `flat`
+    rested = ``;
     // pointer tool: `hand` grips and pulls, `blade` cuts along the pointer's path
     tool = `hand`;
     strokes = /* @__PURE__ */ new Map();
@@ -14557,8 +14561,54 @@ const Q = Dt.h,
         X({ type: `cursor`, cursor: this.toolCursor() }),
         In.requestAnimationFrame((e) => this.frame(e)));
     }
+    // The denim's drape (public/drape.bin), for warm-starting another fabric
+    denimDrape() {
+      return fetch(new URL(`/drape.bin`, self.location.href))
+        .then((e) => (e.ok ? e.arrayBuffer() : null))
+        .catch(() => null);
+    }
+    // Warm start from the denim's drape. Every fabric is the same sheet (size, pinned border, lattice
+    // mapping), so the denim's rest shape sampled at this lattice's rest coordinates is near rest for
+    // any of them; a short settle takes up the difference in weight and stiffness. Returns false when
+    // the drape is missing or stale (the solver then settles from flat).
+    warmStart(e) {
+      if (!e || e.byteLength < 16) return !1;
+      let t = new Uint32Array(e, 0, 4),
+        n = Gt(FABRICS.denim, 0, 0).info;
+      if (t[0] !== 1346458180 || t[1] !== 1 || t[2] !== n.nodeCount || e.byteLength !== 16 + 16 * n.nodeCount)
+        return !1;
+      let r = new Float32Array(e, 16),
+        i = n.material.pitchU,
+        a = n.material.pitchV,
+        o = this.scene,
+        s = o.nodeCount,
+        c = new Float32Array(4 * s),
+        l = (e, t, i) => r[4 * (t * n.nx + e) + i];
+      for (let e = 0; e < s; e++) {
+        if (o.pinned[e]) {
+          for (let t = 0; t < 3; t++) c[4 * e + t] = o.position[3 * e + t];
+          continue;
+        }
+        let t = o.restUV[2 * e] / i,
+          r = o.restUV[2 * e + 1] / a,
+          u = Math.min(n.nx - 2, Math.max(0, Math.floor(t))),
+          d = Math.min(n.ny - 2, Math.max(0, Math.floor(r))),
+          f = Math.min(1, Math.max(0, t - u)),
+          p = Math.min(1, Math.max(0, r - d));
+        for (let t = 0; t < 3; t++)
+          c[4 * e + t] =
+            (1 - p) * ((1 - f) * l(u, d, t) + f * l(u + 1, d, t)) +
+            p * ((1 - f) * l(u, d + 1, t) + f * l(u + 1, d + 1, t));
+      }
+      return (this.solver.setState(c), !0);
+    }
     async settle(e) {
-      (e !== null && Qt(this.solver, e)) || (await $t(this.device, this.solver, this.settleSteps));
+      if (e !== null && Qt(this.solver, e)) this.rested = `file`;
+      else {
+        let e = this.fabric !== `denim` && this.warmStart(await this.denimDrape());
+        ((this.rested = e ? `warm` : `flat`),
+          await $t(this.device, this.solver, e ? Math.min(this.settleSteps, WARM_SETTLE) : this.settleSteps));
+      }
       let t = (e, t) =>
         this.device.createBuffer({ label: t, size: e.size, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
       this.snapshot = {
@@ -15108,7 +15158,7 @@ const Q = Dt.h,
         (new Uint32Array(n, 0, 4).set([1346458180, 1, e, Ht(this.scene)]), new Float32Array(n, 16).set(t));
         return n;
       }
-      if (e.op === `info`) return { nodes: this.solver.N, tool: this.tool, fabric: this.fabric };
+      if (e.op === `info`) return { nodes: this.solver.N, tool: this.tool, fabric: this.fabric, rested: this.rested };
       return e.op === `camera`
         ? (e.distance !== void 0 && (this.camera.distance = e.distance),
           e.pitch !== void 0 && (this.camera.pitch = e.pitch),
