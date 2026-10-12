@@ -577,6 +577,8 @@ function tickShred() {
 function onStats(e) {
   window.__fabricStats = e;
   let t = (e.ruptures ?? 0) + (e.pulledOut ?? 0);
+  // a buzz on phones for each burst of breaking yarns
+  t > shred.target && navigator.vibrate && navigator.vibrate(Math.min(40, 8 + (t - shred.target)));
   t !== shred.target && ((shred.target = t), t > 0 && (scoreEl.classList.add(`visible`), touchShred()), tickShred());
 }
 function verdict(e) {

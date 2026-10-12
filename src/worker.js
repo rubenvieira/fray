@@ -3401,12 +3401,13 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
     groove += 1.0 - hn;
     cnt += 1.0;
   }
+  // the print is a dye over the yarns: it scales what they reflect, warp and weft alike, on both the
+  // per-sample path and the filtered weave-tile path
+  let printUV = vec2<f32>(in.uv.x / f32(LR.field.y), 1.0 - in.uv.y / f32(LR.field.z));
+  let print = textureSampleGrad(printTex, printSampler, printUV, dx / f32(LR.field.y), dy / f32(LR.field.z)).rgb;
   var acc = vec3<f32>(0.0);
   if (cnt > 0.0 && lodTile < 1.0) {
     let inv = 1.0 / cnt;
-    // the print is a dye over the yarns: it scales what they reflect, warp and weft alike
-    let printUV = vec2<f32>(in.uv.x / f32(LR.field.y), 1.0 - in.uv.y / f32(LR.field.z));
-    let print = textureSampleLevel(printTex, printSampler, printUV, 0.0).rgb;
     albDirect = albDirect * print;
     albAmb = albAmb * print;
     let Nl = normalize(nSum);
@@ -3436,7 +3437,7 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
     let fl = i32(round((in.uv.y - warpUnderDist(LR, kk, in.uv.y)) / rep));
     let lw = yarnLook(LR, in.layer, 1u, kk, fl, in.uv.y * LR.pitch.y, 0.3, wearF, pix, 0.0);
     let lf = yarnLook(LR, in.layer, 0u, m, 0, in.uv.x * LR.pitch.x, 0.3, wearF, pix, 1.0 - warpP);
-    let albedo = mix(mix(lf.albedo, lw.albedo, wf), rimAlb, rimPale);
+    let albedo = mix(mix(lf.albedo, lw.albedo, wf), rimAlb, rimPale) * print;
     let ao = mix(tex.y, 0.8, rim.rim) * rim.ao;
     let tw = mix(LR.weft.w, LR.warp.w, wf);
     let Ta = select(Tu, Tv, wf > 0.5);
@@ -15929,6 +15930,33 @@ const Q = Dt.h,
         return this.cutCrossings();
       }
       if (e.op === `cuts`) return this.cutCrossings();
+      if (e.op === `printFill`) {
+        // dev: a solid print written directly (no bitmap), to tell the upload path from the shader path
+        let t = this.renderer,
+          n = this.device.createTexture({
+            label: `print`,
+            size: [2, 2],
+            format: `rgba8unorm-srgb`,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+          });
+        (this.device.queue.writeTexture(
+          { texture: n },
+          new Uint8Array(16).fill(0).map((e, t) => [0, 255, 255, 255][t % 4]),
+          { bytesPerRow: 8 },
+          [2, 2],
+        ),
+          (t.printTex = n),
+          (t.printView = n.createView()),
+          t.rebuildSurfaceGroups(),
+          (this.dirty = !0));
+        return `filled`;
+      }
+      if (e.op === `printInfo`)
+        return {
+          width: this.renderer.printTex.width,
+          height: this.renderer.printTex.height,
+          label: this.renderer.printTex.label,
+        };
       if (e.op === `drape`) {
         // the settled rest state in drape.bin's format (header: magic, version, node count, scene hash)
         let e = this.solver.N,
