@@ -4,36 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#020203" />
-    <title>Break That Denim</title>
+    <title>Fray — Rip Real Fabric</title>
     <meta
       name="description"
-      content="Experience a realistic denim tear simulation. Interact with virtual denim and explore the look and feel of tearing fabric in your browser."
+      content="Rip real fabric in your browser. Tartan, satin, linen and burlap woven thread by thread and simulated on your GPU: pull it, slash it, hear it tear, share the damage."
     />
     <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://denim.scottsun.io" />
-    <link rel="icon" type="image/png" href="/logo.png" />
-    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Denim" />
-    <meta property="og:title" content="Denim — Realistic Denim Tear Simulation" />
+    <meta property="og:site_name" content="Fray" />
+    <meta property="og:title" content="Fray — Rip Real Fabric" />
     <meta
       property="og:description"
-      content="Experience a realistic denim tear simulation. Interact with virtual denim and explore the look and feel of tearing fabric in your browser."
+      content="Woven thread by thread and simulated on your GPU. Pull it, slash it, hear it tear, share the damage."
     />
-    <meta property="og:url" content="https://denim.scottsun.io" />
-    <meta property="og:image" content="https://denim.scottsun.io/og_image.jpeg" />
-    <meta property="og:image:type" content="image/jpeg" />
-    <meta property="og:image:alt" content="Denim tear simulation preview" />
+    <meta property="og:image" content="/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Fray: torn fabric, thread by thread" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Denim — Realistic Denim Tear Simulation" />
+    <meta name="twitter:title" content="Fray — Rip Real Fabric" />
     <meta
       name="twitter:description"
-      content="Experience a realistic denim tear simulation. Interact with virtual denim and explore the look and feel of tearing fabric in your browser."
+      content="Woven thread by thread and simulated on your GPU. Pull it, slash it, hear it tear, share the damage."
     />
-    <meta name="twitter:image" content="https://denim.scottsun.io/og_image.jpeg" />
-    <meta name="twitter:image:alt" content="Denim tear simulation preview" />
+    <meta name="twitter:image" content="/og.png" />
+    <meta name="twitter:image:alt" content="Fray: torn fabric, thread by thread" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -44,13 +41,6 @@
     <script type="module" src="/src/main.js"></script>
   </head>
   <body class="loading">
-    <header class="brand" aria-label="Break That Denim">
-      <span class="brand-kicker" aria-hidden="true">Break that</span>
-      <span class="brand-word" aria-hidden="true"
-        ><span class="brand-half brand-top">Denim</span><span class="brand-half brand-bottom">Denim</span></span
-      >
-      <span class="brand-stitch" aria-hidden="true"></span>
-    </header>
     <div class="loader" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <span class="loader-rows loader-track"></span>
       <span class="loader-rows loader-fill"></span>
@@ -74,11 +64,6 @@
           </button>
         </li>
         <li role="none">
-          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="true" data-fabric="denim">
-            Denim
-          </button>
-        </li>
-        <li role="none">
           <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="linen">
             Linen
           </button>
@@ -89,13 +74,7 @@
           </button>
         </li>
         <li role="none">
-          <button
-            class="experience fabric"
-            type="button"
-            role="menuitemradio"
-            aria-checked="false"
-            data-fabric="tartan"
-          >
+          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="true" data-fabric="tartan">
             Tartan
           </button>
         </li>
@@ -126,7 +105,7 @@
         class="tool"
         type="button"
         aria-label="Knife"
-        title="Knife: drag across the denim to cut it"
+        title="Knife: drag across the fabric to cut it"
         aria-pressed="false"
       >
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -135,7 +114,7 @@
         </svg>
         <span>Knife</span>
       </button>
-      <button class="reset" type="button" aria-label="Reset the denim" title="Reset the denim">
+      <button class="reset" type="button" aria-label="Reset the fabric" title="Reset the fabric">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
           <path d="M19.4 13.1a7.5 7.5 0 1 1-2.1-6.4" />
           <path d="M18.3 3.4v3.9h-3.9" />
@@ -155,7 +134,7 @@
         <div class="sheet-actions">
           <a class="sheet-x" href="#" target="_blank" rel="noopener">Post on X</a>
           <button class="sheet-share" type="button" hidden>Share…</button>
-          <a class="sheet-save" href="#" download="break-that-denim.png">Save image</a>
+          <a class="sheet-save" href="#" download="fray.png">Save image</a>
           <button class="sheet-close" type="button">Close</button>
         </div>
       </div>

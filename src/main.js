@@ -298,7 +298,7 @@ if (!(`transferControlToOffscreen` in m) || !navigator.gpu)
 var S = null,
   C = (e, t = []) => S?.postMessage(e, t),
   w = new u((e) => C({ type: `audio`, port: e }, [e])),
-  fabric = `denim`,
+  fabric = `tartan`,
   // dev: ?settle=N shortens the settle of a fabric without a drape file
   settleSteps = Number(new URLSearchParams(location.search).get(`settle`)) || 0;
 function T() {
@@ -532,17 +532,19 @@ var shareButton = document.querySelector(`.share`),
   sheetClose = sheet.querySelector(`.sheet-close`),
   cardFile = null,
   cardUrl = null;
-const SITE = `${location.origin}${location.pathname}`;
+const SITE = `${location.origin}${location.pathname}`,
+  BRAND = `Fray`,
+  TAG = `#FrayIt`;
 function fabricLabel() {
-  return fabric === `denim` ? `denim` : fabric === `burlap` ? `burlap` : fabric === `tartan` ? `tartan` : fabric;
+  return fabric;
 }
 function shareText() {
   let e = shred.target,
     t =
       e > 0
-        ? `I shredded ${e.toLocaleString()} threads of ${fabricLabel()} in ${fmtTime(shredSeconds())}. Verdict: ${verdict(e)}.`
-        : `Virtual ${fabricLabel()}, real tearing, in your browser.`;
-  return `${t} 🧵✂️ Think you can do worse? ${SITE} #BreakThatDenim`;
+        ? `I ripped ${e.toLocaleString()} threads of ${fabricLabel()} in ${fmtTime(shredSeconds())} on ${BRAND}. Verdict: ${verdict(e)}.`
+        : `${BRAND}: real ${fabricLabel()}, woven thread by thread, torn in your browser.`;
+  return `${t} 🧵✂️ Think you can do worse? ${SITE} ${TAG}`;
 }
 function requestCard() {
   if (shareButton.getAttribute(`aria-busy`) === `true`) return;
@@ -571,8 +573,8 @@ async function composeCard(e) {
   let u = (e, t, n, r, i, o, s = `left`) => {
     ((a.font = e), (a.fillStyle = t), (a.letterSpacing = n), (a.textAlign = s), a.fillText(r, i, o));
   };
-  (u(`600 20px Oswald`, `#c9883f`, `8px`, `BREAK THAT`, 56, r - 136),
-    u(`400 86px Anton`, `#e9ebf1`, `3px`, `DENIM`, 56, r - 56),
+  (u(`600 20px Oswald`, `#c9883f`, `8px`, `RIP REAL FABRIC`, 56, r - 136),
+    u(`400 86px Anton`, `#e9ebf1`, `3px`, BRAND.toUpperCase(), 56, r - 56),
     (a.strokeStyle = `#c9883f`),
     (a.lineWidth = 3),
     a.setLineDash([10, 6]),
@@ -604,7 +606,7 @@ async function onCapture(e) {
   }
   let t = await composeCard(e);
   (cardUrl && URL.revokeObjectURL(cardUrl), (cardUrl = URL.createObjectURL(t)));
-  cardFile = new File([t], `break-that-denim-${fabric}.png`, { type: `image/png` });
+  cardFile = new File([t], `fray-${fabric}.png`, { type: `image/png` });
   let n = shareText();
   ((sheetImg.src = cardUrl),
     (sheetText.textContent = n),
@@ -627,7 +629,7 @@ function closeSheet() {
   }),
   sheetShare.addEventListener(`click`, async () => {
     try {
-      await navigator.share({ files: [cardFile], text: shareText(), title: `Break That Denim` });
+      await navigator.share({ files: [cardFile], text: shareText(), title: BRAND });
     } catch {}
   }));
 

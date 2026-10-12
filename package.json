@@ -1,9 +1,9 @@
 {
-  "name": "break-that-denim",
+  "name": "fray",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Realistic WebGPU denim tear simulation — replica of https://denim.scottsun.io",
+  "description": "Fray: rip real fabric in your browser (WebGPU yarn-level cloth tearing)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

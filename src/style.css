@@ -36,98 +36,6 @@ body {
 body.loading .stage {
   opacity: 0;
 }
-.brand {
-  top: var(--top);
-  left: var(--left);
-  pointer-events: none;
-  filter: drop-shadow(0 1px 10px #0203088c) drop-shadow(0 0 2px #02030859);
-  opacity: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  transition:
-    opacity 0.7s,
-    transform 0.7s;
-  display: flex;
-  position: fixed;
-  transform: translateY(-4px);
-}
-body.fonts .brand {
-  opacity: 1;
-  transform: none;
-}
-.brand-kicker {
-  font: 600 clamp(9px, 0.45vw + 7px, 12px) / 1 var(--label);
-  letter-spacing: 0.42em;
-  text-transform: uppercase;
-  color: var(--thread);
-  margin-left: 0.14em;
-}
-.brand-word {
-  --tear: polygon(
-    0 0,
-    43.5% 0,
-    45% 9%,
-    43.8% 18%,
-    46.6% 27%,
-    45.4% 36%,
-    48.6% 46%,
-    47.6% 55%,
-    50.8% 64%,
-    49.6% 73%,
-    53% 82%,
-    52% 91%,
-    54.6% 100%,
-    0 100%
-  );
-  --rest: polygon(
-    43.5% 0,
-    100% 0,
-    100% 100%,
-    54.6% 100%,
-    52% 91%,
-    53% 82%,
-    49.6% 73%,
-    50.8% 64%,
-    47.6% 55%,
-    48.6% 46%,
-    45.4% 36%,
-    46.6% 27%,
-    43.8% 18%,
-    45% 9%
-  );
-  font: 400 clamp(30px, 1.5vw + 20px, 46px) / 0.95 var(--display);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--paper);
-  margin-top: 0.14em;
-  display: block;
-  position: relative;
-}
-.brand-half {
-  display: block;
-}
-.brand-top {
-  clip-path: var(--tear);
-}
-.brand-bottom {
-  clip-path: var(--rest);
-  transform-origin: 54% 100%;
-  color: #dfe3ec;
-  position: absolute;
-  inset: 0;
-  transform: translate(0.05em, -0.035em) rotate(-2.4deg);
-}
-.brand-stitch {
-  opacity: 0.9;
-  background:
-    repeating-linear-gradient(90deg, var(--thread) 0 7px, transparent 7px 11px) 0 0 / 100% 2px no-repeat,
-    repeating-linear-gradient(90deg, var(--thread) 0 7px, transparent 7px 11px) 5px 100% / 100% 2px no-repeat;
-  width: 100%;
-  height: 6px;
-  margin-top: 0.6em;
-  -webkit-mask: linear-gradient(90deg, #000 0 52%, #0000 52% 60%, #000 60%);
-  mask: linear-gradient(90deg, #000 0 52%, #0000 52% 60%, #000 60%);
-}
 .loader {
   --p: 0;
   pointer-events: none;
@@ -205,9 +113,6 @@ body.staged .dock {
 body.staged .dock:hover,
 body.staged .dock:focus-within {
   opacity: 1;
-}
-body.staged .brand {
-  opacity: 0;
 }
 .reset,
 .tool,

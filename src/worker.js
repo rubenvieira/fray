@@ -15173,7 +15173,7 @@ In.onmessage = (t) => {
   let n = t.data;
   switch (n.type) {
     case `init`:
-      (($.fabric = n.fabric ?? `denim`),
+      (($.fabric = n.fabric ?? `tartan`),
       ($.settleSteps = n.settleSteps > 0 ? n.settleSteps : 420),
       $.init(n.canvas, n.width, n.height, n.cssWidth, n.cssHeight)).catch((t) => {
         (console.error(t),

@@ -1,26 +1,31 @@
-# Break That Denim
+# Fray
 
-A faithful replica of [denim.scottsun.io](https://denim.scottsun.io) — a realistic, interactive denim
-tear simulation that runs entirely in the browser on **WebGPU**.
+Rip real fabric in your browser. Tartan, satin, linen and burlap are woven thread by thread and
+simulated on your **WebGPU**: pull it, slash it, hear it tear, share the damage.
 
-Drag across the fabric to pull and tear it. Scroll to zoom. Open the eye menu for the hidden
-"Smilie" experience. Hit **Reset** to get a fresh pair of jeans.
+The engine is a yarn-level cloth solver: every warp and weft yarn is simulated and rendered, so a
+tear is not a texture effect but yarns breaking, slipping out of the weave and fraying.
 
-Beyond the original site, this build adds:
+Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a fresh sheet.
 
-- **Knife tool** (dock button or the `K` key): drag to slash the cloth instead of pulling it. The
-  stroke cuts every yarn crossing along its path in weave space, so the slit is continuous and evenly
-  wide however fast you move; switch back to the hand and pull the slit open to run the tear.
-- **Fabric picker** (in the eye menu, or the `F` key to cycle): the same sheet woven as **denim**
-  (3/1 indigo twill), **burlap** (plain-weave jute hessian: coarse, open, brittle, frays a lot),
-  **tartan** (2/2 worsted wool twill with a Royal Stewart-style sett, soft and hairy), **satin**
-  (5-harness crimson silk: glossy floats, rips run straight) or **linen** (ecru plain-weave canvas).
+- **Knife** (dock button or `K`): drag to slash the cloth instead of pulling it. The stroke cuts every
+  yarn crossing along its path in weave space, so the slit is continuous and evenly wide however fast
+  you move; switch back to the hand and pull the slit open to run the tear.
+- **Fabrics** (eye menu, or `F` to cycle): **tartan** (2/2 worsted wool twill with a Royal
+  Stewart-style sett, soft and hairy), **satin** (5-harness crimson silk: glossy floats, rips run
+  straight), **linen** (ecru plain-weave canvas) and **burlap** (plain-weave jute hessian: coarse,
+  open, brittle, frays a lot).
 - **Shred score**: a live count of threads shredded (yarns ruptured plus yarns pulled out of the
   weave, from the solver's own counters) with a clock that starts at your first touch, and a verdict
   tier from Gentle to Absolute unit.
 - **Share** (dock button or `S`): grabs the frame, composes a 1200x675 card with your score, time,
   fabric and verdict, and offers Post on X (pre-written text), the native share sheet with the image
-  on phones, or saving the PNG. `R` resets, `K` toggles the knife, `Esc` closes.
+  on phones, or saving the PNG. `R` resets, `Esc` closes.
+- The eye menu also hides the "Smilie" experience.
+
+The simulation core descends from [denim.scottsun.io](https://denim.scottsun.io) (a denim tear
+simulation, reproduced from its deployed build); the denim preset is kept in the code as the
+reference drape every other fabric is warm-started from, but is not offered in the menu.
 
 ## Requirements
 
@@ -39,7 +44,7 @@ npm run preview    # serve dist/
 ## Project layout
 
 ```
-index.html                 page shell: brand lockup, loader, dock (experiences menu + reset), status line
+index.html                 page shell: loader, dock (fabrics/experience menu, share, knife, reset), score, share sheet
 src/style.css              all styling (Anton/Oswald display type, torn-paper clip-path logo, stitched loader)
 src/main.js                main thread: canvas + OffscreenCanvas handoff, pointer/wheel/visibility plumbing,
                            AudioContext + tear-sound engine (TearAudio), loader/status UI, experiences menu
@@ -53,7 +58,7 @@ public/models/smilie.glb   model for the "Smilie" experience
 public/stage/smilie.clip   staged animation clip for the experience
 public/fabric_tear_sound_sample.mp3
 public/exprerience_sounds/ ambient loop + laugh used by the experience
-public/logo.png, og_image.jpeg, robots.txt
+public/icon.svg, og.png, robots.txt
 ```
 
 ## How it works
