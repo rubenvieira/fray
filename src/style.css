@@ -638,3 +638,55 @@ body.loading .score {
 .sheet-actions-end {
   margin-top: 0;
 }
+
+/* ---------------------------------------------------------------- tool menu */
+.tools {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+}
+.tools[hidden] {
+  display: none;
+}
+.tool svg {
+  display: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.tool[data-tool="hand"] .i-hand,
+.tool[data-tool="blade"] .i-blade,
+.tool[data-tool="claw"] .i-claw,
+.tool[data-tool="fist"] .i-fist,
+.tool[data-tool="pin"] .i-pin {
+  display: block;
+}
+.tool[aria-expanded="true"] {
+  color: var(--paper);
+  background: #161b28b8;
+  border-color: #e9ebf138;
+}
+.tool[aria-expanded="true"]:before {
+  border-color: var(--thread);
+}
+.tool:not([data-tool="hand"]) {
+  color: var(--paper);
+}
+.tool:not([data-tool="hand"]):before {
+  border-color: var(--thread);
+}
+@media (width<=600px) {
+  .tool .tool-name {
+    display: none;
+  }
+}

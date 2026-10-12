@@ -8,13 +8,24 @@ tear is not a texture effect but yarns breaking, slipping out of the weave and f
 
 Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a fresh sheet.
 
-- **Knife** (dock button or `K`): drag to slash the cloth instead of pulling it. The stroke cuts every
-  yarn crossing along its path in weave space, so the slit is continuous and evenly wide however fast
-  you move; switch back to the hand and pull the slit open to run the tear.
+- **Tools** (tool button, or keys `1`-`5`): the **hand** grips and pulls; the **knife** (`K`) slashes,
+  cutting every yarn crossing along the stroke in weave space so the slit is continuous however fast
+  you move; the **claw** (`C`) drags three sharp points that pierce the weave and ladder it; the
+  **fist** (`B`) punches a blunt sphere down through the sheet where you click, tenting it until it
+  rips; the **pin** (`P`) holds a point so one mouse can stretch the cloth between pin and hand (pin
+  it again to let go).
+- **Effects** (same menu): **wind** (`W`: off, breeze, gale) gusts across the sheet so torn strips
+  flutter; **slow motion** (`T`) runs the simulation at a fifth of real time; **shake** (`X`) throws
+  the sheet.
+- **Orbit**: right-drag or the arrow keys turn the camera; scroll zooms.
+- **Print a photo** (eye menu, or drop / paste an image): the image is dyed onto the yarns of the
+  sheet, cover-fit, and never leaves your browser. Then rip it.
 - **Fabrics** (eye menu, or `F` to cycle): **tartan** (2/2 worsted wool twill with a Royal
   Stewart-style sett, soft and hairy), **satin** (5-harness crimson silk: glossy floats, rips run
-  straight), **linen** (ecru plain-weave canvas) and **burlap** (plain-weave jute hessian: coarse,
-  open, brittle, frays a lot).
+  straight), **linen** (ecru plain-weave canvas), **burlap** (plain-weave jute hessian: coarse, open,
+  brittle, frays a lot), **chiffon** (sheer silk crepe, tears like tissue), **gauze** (open
+  cheesecloth that ladders before it breaks), **lamé** (gold metallic satin) and **ballistic**
+  nylon (the challenge fabric: it very nearly does not tear).
 - **Shred score**: a live count of threads shredded (yarns ruptured plus yarns pulled out of the
   weave, from the solver's own counters) with a clock that starts at your first touch, and a verdict
   tier from Gentle to Absolute unit.
@@ -87,7 +98,13 @@ public/icon.svg, og.png, robots.txt
    shader marks crossings along the stroke as cut (damage code 255), and the existing field update, span
    coupling, fray and edge rendering take it from there. Strokes are picked per pointer sample with the same
    GPU pick the hand uses, and queued to the next solver substep.
-8. Fabrics are presets (`FABRICS` in `src/worker.js`): yarn mechanics, weave (twill repeat / warp-over), node
+8. The fist and claw are capsules on the body-contact system the staged creature uses (a blunt sphere
+   animated down and up; three sharp capsules riding under the surface, which the pierce pass cuts
+   around). Pins are grips whose hand never moves. Wind is a compute pass adding a gusting pressure to
+   the external force at assembly; slow motion scales the simulated time per real second; shake
+   writes a smooth velocity field. The print is a texture sampled over the sheet in the surface pass
+   and multiplied into the yarns' albedo.
+9. Fabrics are presets (`FABRICS` in `src/worker.js`): yarn mechanics, weave (twill repeat / warp-over), node
    bundling and wear. The renderer branches on the material id in the layer uniform for the yarn, rim-fibre
    and fray colours. Switching fabric restarts the worker on a fresh canvas so the old GPU device is released.
    Each fabric ships its settled rest state (`public/drape*.bin`); without one the engine warm-starts from

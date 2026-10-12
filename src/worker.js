@@ -367,6 +367,175 @@ const p = 18e-8,
     thickness: 6e-4,
     clothFriction: 0.45,
     airDrag: 1.6,
+  },
+  // Chiffon: a sheer plain-weave silk of very fine crepe yarns. Light as a leaf, weak, and tears
+  // like tissue; the open sett lets the floor show through.
+  chiffon = {
+    id: 5,
+    name: `chiffon-plain`,
+    pitchU: 4e-4,
+    pitchV: 4e-4,
+    yarns: [
+      yarnOf({
+        linearDensity: 1.1e-5,
+        eaLow: 2,
+        eaHigh: 70,
+        crimpStrain: 0.02,
+        bendRigidity: 1.5e-9,
+        strength: 1.6,
+        width: 1.8e-4,
+        height: 9e-5,
+        crimpAmplitude: 4e-5,
+        softeningOpening: 1e-4,
+      }),
+      yarnOf({
+        linearDensity: 1.1e-5,
+        eaLow: 2,
+        eaHigh: 70,
+        crimpStrain: 0.02,
+        bendRigidity: 1.5e-9,
+        strength: 1.6,
+        width: 1.8e-4,
+        height: 9e-5,
+        crimpAmplitude: 4e-5,
+        softeningOpening: 1e-4,
+      }),
+    ],
+    twillRepeat: 2,
+    twillWarpOver: 1,
+    shearStiffness: 6,
+    crossingFriction: 0.25,
+    crossingNormal0: 0.04,
+    crossingWrap: 0.2,
+    thickness: 1.5e-4,
+    clothFriction: 0.3,
+    airDrag: 3,
+  },
+  // Gauze (cheesecloth): a very open plain weave of soft, slack cotton yarns. Flimsy, the weave
+  // slides and ladders before it breaks.
+  gauze = {
+    id: 6,
+    name: `gauze-plain`,
+    pitchU: 1.4e-3,
+    pitchV: 1.4e-3,
+    yarns: [
+      yarnOf({
+        linearDensity: 3.5e-5,
+        eaLow: 3,
+        eaHigh: 80,
+        crimpStrain: 0.04,
+        bendRigidity: 6e-9,
+        strength: 3,
+        width: 4.5e-4,
+        height: 2.2e-4,
+        crimpAmplitude: 1.2e-4,
+      }),
+      yarnOf({
+        linearDensity: 3.5e-5,
+        eaLow: 3,
+        eaHigh: 80,
+        crimpStrain: 0.04,
+        bendRigidity: 6e-9,
+        strength: 3,
+        width: 4.5e-4,
+        height: 2.2e-4,
+        crimpAmplitude: 1.2e-4,
+      }),
+    ],
+    twillRepeat: 2,
+    twillWarpOver: 1,
+    shearStiffness: 4,
+    crossingFriction: 0.3,
+    crossingNormal0: 0.05,
+    crossingWrap: 0.2,
+    thickness: 4.5e-4,
+    clothFriction: 0.45,
+    airDrag: 2.6,
+  },
+  // Lamé: the satin's weave with a metallic gold warp (the sheen is the point).
+  lame = {
+    id: 7,
+    name: `lame-satin`,
+    pitchU: 4.5e-4,
+    pitchV: 5e-4,
+    yarns: [
+      yarnOf({
+        linearDensity: 3.4e-5,
+        eaLow: 8,
+        eaHigh: 220,
+        crimpStrain: 0.012,
+        bendRigidity: 6e-9,
+        strength: 5.5,
+        width: 4.6e-4,
+        height: 1.6e-4,
+        crimpAmplitude: 6e-5,
+        softeningOpening: 1.5e-4,
+      }),
+      yarnOf({
+        linearDensity: 3.6e-5,
+        eaLow: 10,
+        eaHigh: 260,
+        crimpStrain: 0.008,
+        bendRigidity: 8e-9,
+        strength: 6,
+        width: 4.2e-4,
+        height: 1.4e-4,
+        crimpAmplitude: 3e-5,
+        softeningOpening: 1.5e-4,
+      }),
+    ],
+    twillRepeat: 5,
+    twillWarpOver: 4,
+    shearStiffness: 28,
+    crossingFriction: 0.18,
+    crossingNormal0: 0.12,
+    crossingWrap: 0.25,
+    thickness: 3.5e-4,
+    clothFriction: 0.28,
+    airDrag: 1.4,
+  },
+  // Ballistic nylon: a dense 2x2 basket-like weave of heavy filament yarns, as strong as it gets. The
+  // challenge fabric: it stretches, it hums, it very nearly does not tear.
+  ballistic = {
+    id: 8,
+    name: `ballistic-2x2`,
+    pitchU: 5.5e-4,
+    pitchV: 5.5e-4,
+    yarns: [
+      yarnOf({
+        linearDensity: 1.2e-4,
+        eaLow: 20,
+        eaHigh: 420,
+        crimpStrain: 0.015,
+        bendRigidity: 4e-8,
+        strength: 34,
+        width: 5.2e-4,
+        height: 2.4e-4,
+        crimpAmplitude: 8e-5,
+        softeningOpening: 5e-4,
+      }),
+      yarnOf({
+        linearDensity: 1.2e-4,
+        eaLow: 20,
+        eaHigh: 420,
+        crimpStrain: 0.015,
+        bendRigidity: 4e-8,
+        strength: 36,
+        width: 5.2e-4,
+        height: 2.4e-4,
+        crimpAmplitude: 8e-5,
+        softeningOpening: 5e-4,
+      }),
+    ],
+    twillRepeat: 4,
+    twillWarpOver: 2,
+    shearStiffness: 80,
+    crossingFriction: 0.35,
+    crossingNormal0: 0.3,
+    crossingWrap: 0.35,
+    thickness: 6e-4,
+    clothFriction: 0.4,
+    airDrag: 1.5,
   };
 function h(e, t, n = t) {
   for (let e of [t, n])
@@ -2130,6 +2299,10 @@ fn fabricWarpMean(m: u32) -> vec3<f32> {
     case 2u: { return vec3<f32>(0.4, 0.09, 0.07); }
     case 3u: { return vec3<f32>(0.5, 0.03, 0.05); }
     case 4u: { return vec3<f32>(0.6, 0.52, 0.39); }
+    case 5u: { return vec3<f32>(0.5, 0.5, 0.56); }
+    case 6u: { return vec3<f32>(0.72, 0.68, 0.6); }
+    case 7u: { return vec3<f32>(0.72, 0.5, 0.12); }
+    case 8u: { return vec3<f32>(0.04, 0.04, 0.045); }
     default: { return vec3<f32>(0.045, 0.065, 0.135); }
   }
 }
@@ -2139,6 +2312,10 @@ fn fabricWeftMean(m: u32) -> vec3<f32> {
     case 2u: { return vec3<f32>(0.4, 0.09, 0.07); }
     case 3u: { return vec3<f32>(0.36, 0.02, 0.03); }
     case 4u: { return vec3<f32>(0.58, 0.5, 0.38); }
+    case 5u: { return vec3<f32>(0.48, 0.48, 0.54); }
+    case 6u: { return vec3<f32>(0.72, 0.68, 0.6); }
+    case 7u: { return vec3<f32>(0.42, 0.3, 0.08); }
+    case 8u: { return vec3<f32>(0.04, 0.04, 0.045); }
     default: { return vec3<f32>(0.26, 0.27, 0.28); }
   }
 }
@@ -2148,6 +2325,10 @@ fn fabricRimPale(m: u32) -> vec3<f32> {
     case 2u: { return vec3<f32>(0.7, 0.62, 0.56); }
     case 3u: { return vec3<f32>(0.8, 0.5, 0.52); }
     case 4u: { return vec3<f32>(0.78, 0.72, 0.6); }
+    case 5u: { return vec3<f32>(0.72, 0.72, 0.76); }
+    case 6u: { return vec3<f32>(0.8, 0.78, 0.72); }
+    case 7u: { return vec3<f32>(0.8, 0.62, 0.25); }
+    case 8u: { return vec3<f32>(0.22, 0.22, 0.24); }
     default: { return vec3<f32>(0.64, 0.67, 0.73); }
   }
 }
@@ -2157,6 +2338,10 @@ fn fabricRimDyed(m: u32) -> vec3<f32> {
     case 2u: { return vec3<f32>(0.5, 0.1, 0.1); }
     case 3u: { return vec3<f32>(0.45, 0.05, 0.08); }
     case 4u: { return vec3<f32>(0.5, 0.42, 0.3); }
+    case 5u: { return vec3<f32>(0.45, 0.45, 0.52); }
+    case 6u: { return vec3<f32>(0.6, 0.56, 0.48); }
+    case 7u: { return vec3<f32>(0.5, 0.33, 0.08); }
+    case 8u: { return vec3<f32>(0.06, 0.06, 0.07); }
     default: { return vec3<f32>(0.2, 0.28, 0.5); }
   }
 }
@@ -2248,6 +2433,50 @@ fn yarnLook(L: LayerR, layerIdx: u32, fam: u32, yarn: i32, float_: i32, along: f
     alb = mix(alb, pale, clamp(0.35 * slub + 0.3 * wear, 0.0, 1.0)) * shade * fib;
     o.albedo = mix(alb, pale, 0.3 * loose);
     o.fuzz = 0.3 + 0.25 * wear + 0.3 * loose;
+    o.ao = 1.0;
+    return o;
+  }
+  if (L.refine.w == 5u) {
+    // Chiffon: sheer dove-grey silk crepe; the twist of crepe yarn makes a faint sparkle along it
+    let v = 1.0 + (0.1 * hash2f(seedY, 3u) - 0.05) * rYarn;
+    let twinkle = 0.5 + 0.5 * noise1(seedY + 41u, along / 0.25e-3) * resolved(0.25e-3, pix);
+    var alb = vec3<f32>(0.5, 0.5, 0.56) * (0.8 + 0.3 * crown) * (0.9 + 0.2 * twinkle) * v;
+    o.albedo = mix(alb, vec3<f32>(0.7, 0.7, 0.74), 0.3 * loose + 0.2 * wear);
+    o.fuzz = 0.08 + 0.2 * loose;
+    o.ao = 1.0;
+    return o;
+  }
+  if (L.refine.w == 6u) {
+    // Gauze: soft bleached cotton, slack and fluffy
+    let v = 1.0 + (0.16 * hash2f(seedY, 3u) - 0.08) * rYarn;
+    let fib = mix(1.0, 0.8 + 0.4 * fiberRnd, fiberVis);
+    var alb = vec3<f32>(0.74, 0.7, 0.62) * (0.85 + 0.15 * crown) * v * fib;
+    o.albedo = mix(alb, vec3<f32>(0.8, 0.78, 0.72), 0.3 * loose);
+    o.fuzz = 0.6 + 0.3 * loose;
+    o.ao = 1.0;
+    return o;
+  }
+  if (L.refine.w == 7u) {
+    // Lame: a metallic gold warp over a dull gold weft; the sheen is strong and tight on the crown
+    let sheen = pow(crown, 10.0);
+    let v = 1.0 + (0.1 * hash2f(seedY, 3u) - 0.05) * rYarn;
+    let warp = fam == 1u;
+    let base = select(vec3<f32>(0.42, 0.3, 0.08), vec3<f32>(0.72, 0.5, 0.12), warp);
+    var alb = (base * (0.55 + 0.6 * crown) + vec3<f32>(1.0, 0.92, 0.6) * select(0.15, 0.75, warp) * sheen) * v;
+    alb = mix(alb, vec3<f32>(0.6, 0.45, 0.15), 0.3 * loose + 0.2 * wear);
+    o.albedo = clamp(alb, vec3<f32>(0.0), vec3<f32>(1.2));
+    o.fuzz = 0.02 + 0.15 * loose;
+    o.ao = 1.0;
+    return o;
+  }
+  if (L.refine.w == 8u) {
+    // Ballistic nylon: black filament yarns with a hard low sheen, faint per-yarn variation
+    let sheen = pow(crown, 4.0);
+    let v = 1.0 + (0.08 * hash2f(seedY, 3u) - 0.04) * rYarn;
+    var alb = (vec3<f32>(0.035, 0.035, 0.04) * (0.7 + 0.5 * crown) + vec3<f32>(0.25, 0.25, 0.27) * 0.35 * sheen) * v;
+    alb = mix(alb, vec3<f32>(0.18, 0.18, 0.19), 0.3 * loose + 0.3 * wear);
+    o.albedo = alb;
+    o.fuzz = 0.08 + 0.3 * wear + 0.2 * loose;
     o.ao = 1.0;
     return o;
   }
@@ -2710,6 +2939,9 @@ fn refine(@builtin(global_invocation_id) gid: vec3<u32>) {
 @group(0) @binding(14) var<storage, read> tframe: array<vec4<f32>>;
 @group(0) @binding(15) var<storage, read> kappaM: array<u32>;
 @group(0) @binding(16) var overMap: texture_depth_2d;
+// a print on the cloth (Renderer.setPrint): sampled over the sheet, white when there is none
+@group(0) @binding(17) var printTex: texture_2d<f32>;
+@group(0) @binding(18) var printSampler: sampler;
 
 
 struct VOut {
@@ -3172,6 +3404,11 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
   var acc = vec3<f32>(0.0);
   if (cnt > 0.0 && lodTile < 1.0) {
     let inv = 1.0 / cnt;
+    // the print is a dye over the yarns: it scales what they reflect, warp and weft alike
+    let printUV = vec2<f32>(in.uv.x / f32(LR.field.y), 1.0 - in.uv.y / f32(LR.field.z));
+    let print = textureSampleLevel(printTex, printSampler, printUV, 0.0).rgb;
+    albDirect = albDirect * print;
+    albAmb = albAmb * print;
     let Nl = normalize(nSum);
     let Tl = normalize(tSum - dot(tSum, Nl) * Nl + 1e-6 * Tu);
     acc = fiberShade(Nl, Tl, Vv, key.xyz, albDirect * inv, fuzz * inv) * (key.w * sh) * F.keyColor.rgb + fiberShade(Nl, Tl, Vv, F.overDir.xyz, albDirect * inv, fuzz * inv) * over + amb * albAmb * inv;
@@ -5116,6 +5353,10 @@ fn dyedFibre() -> vec3<f32> {
     case 2u: { return fibreAlbedo(vec3<f32>(0.55, 0.03, 0.04)); }
     case 3u: { return fibreAlbedo(vec3<f32>(0.45, 0.02, 0.04)); }
     case 4u: { return fibreAlbedo(vec3<f32>(0.36, 0.29, 0.19)); }
+    case 5u: { return fibreAlbedo(vec3<f32>(0.45, 0.45, 0.52)); }
+    case 6u: { return fibreAlbedo(vec3<f32>(0.6, 0.56, 0.48)); }
+    case 7u: { return fibreAlbedo(vec3<f32>(0.5, 0.33, 0.08)); }
+    case 8u: { return fibreAlbedo(vec3<f32>(0.06, 0.06, 0.07)); }
     default: { return DYED_FIBRE; }
   }
 }
@@ -5125,6 +5366,10 @@ fn coreFibre() -> vec3<f32> {
     case 2u: { return fibreAlbedo(vec3<f32>(0.7, 0.65, 0.6)); }
     case 3u: { return fibreAlbedo(vec3<f32>(0.75, 0.35, 0.37)); }
     case 4u: { return fibreAlbedo(vec3<f32>(0.62, 0.54, 0.4)); }
+    case 5u: { return fibreAlbedo(vec3<f32>(0.72, 0.72, 0.76)); }
+    case 6u: { return fibreAlbedo(vec3<f32>(0.8, 0.78, 0.72)); }
+    case 7u: { return fibreAlbedo(vec3<f32>(0.8, 0.62, 0.25)); }
+    case 8u: { return fibreAlbedo(vec3<f32>(0.22, 0.22, 0.24)); }
     default: { return CORE_FIBRE; }
   }
 }
@@ -5134,6 +5379,10 @@ fn weftFibre() -> vec3<f32> {
     case 2u: { return fibreAlbedo(vec3<f32>(0.7, 0.65, 0.6)); }
     case 3u: { return fibreAlbedo(vec3<f32>(0.7, 0.3, 0.33)); }
     case 4u: { return fibreAlbedo(vec3<f32>(0.62, 0.54, 0.4)); }
+    case 5u: { return fibreAlbedo(vec3<f32>(0.7, 0.7, 0.74)); }
+    case 6u: { return fibreAlbedo(vec3<f32>(0.8, 0.78, 0.72)); }
+    case 7u: { return fibreAlbedo(vec3<f32>(0.42, 0.3, 0.08)); }
+    case 8u: { return fibreAlbedo(vec3<f32>(0.2, 0.2, 0.22)); }
     default: { return WEFT_FIBRE; }
   }
 }
@@ -6651,6 +6900,8 @@ var Fe = class {
           P(14),
           P(15),
           { binding: 16, visibility: M, texture: { sampleType: `depth` } },
+          { binding: 17, visibility: M, texture: { sampleType: `float` } },
+          { binding: 18, visibility: M, sampler: { type: `filtering` } },
         ],
       }),
       Ie = e.createBindGroupLayout({
@@ -6738,6 +6989,21 @@ var Fe = class {
     ((this.pipes.mount = z(`mount`, Ge, Ke, `vsMount`, `fsMount`, R, L)),
       (this.pipes.mountShadow = z(`mount.shadow`, Ge, Ke, `vsMountShadow`, null, R, null)),
       (this.mountCorners = o(e, `mountCorners`, this.mountGeometry())));
+    ((this.surfaceLayout = I),
+      (this.printTex = e.createTexture({
+        label: `print`,
+        size: [1, 1],
+        format: `rgba8unorm-srgb`,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      })),
+      e.queue.writeTexture(
+        { texture: this.printTex },
+        new Uint8Array([255, 255, 255, 255]),
+        { bytesPerRow: 4 },
+        [1, 1],
+      ),
+      (this.printView = this.printTex.createView()),
+      (this.printSampler = e.createSampler({ magFilter: `linear`, minFilter: `linear` })));
     let qe = this.weaveTile.createView({ dimension: `2d-array` }),
       Je = this.edgeTex.createView(),
       Ye = this.shadowTex.createView(),
@@ -6768,6 +7034,8 @@ var Fe = class {
           { binding: 14, resource: { buffer: this.tframe } },
           { binding: 15, resource: { buffer: this.kappa } },
           { binding: 16, resource: i },
+          { binding: 17, resource: this.printView },
+          { binding: 18, resource: this.printSampler },
         ],
       })),
         (this.groups[`thread${t}`] = e.createBindGroup({
@@ -7089,6 +7357,71 @@ var Fe = class {
         { binding: 11, resource: x },
       ],
     });
+  }
+  // Print an image over the sheet (null clears it). The surface bind groups are rebuilt around it.
+  setPrint(e) {
+    let t = this.device,
+      n = this.printTex;
+    if (e) {
+      let n = t.createTexture({
+        label: `print`,
+        size: [e.width, e.height],
+        format: `rgba8unorm-srgb`,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+      (t.queue.copyExternalImageToTexture({ source: e }, { texture: n }, [e.width, e.height]),
+        (this.printTex = n),
+        (this.printView = n.createView()));
+    } else {
+      let e = t.createTexture({
+        label: `print`,
+        size: [1, 1],
+        format: `rgba8unorm-srgb`,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+      (t.queue.writeTexture({ texture: e }, new Uint8Array([255, 255, 255, 255]), { bytesPerRow: 4 }, [1, 1]),
+        (this.printTex = e),
+        (this.printView = e.createView()));
+    }
+    (this.rebuildSurfaceGroups(), t.queue.onSubmittedWorkDone().then(() => n.destroy()));
+  }
+  rebuildSurfaceGroups() {
+    let e = this.device,
+      t = this.solver,
+      n = this.weaveTile.createView({ dimension: `2d-array` }),
+      r = this.edgeTex.createView(),
+      i = this.shadowTex.createView(),
+      a = this.dummyDepth.createView(),
+      o = this.overTex.createView();
+    for (let [s, c, l, u] of [
+      [``, i, o, this.frameU],
+      [`Shadow`, a, a, this.frameU],
+      [`Over`, a, a, this.frameOverU],
+    ])
+      this.groups[`surface${s}`] = e.createBindGroup({
+        layout: this.surfaceLayout,
+        entries: [
+          { binding: 0, resource: { buffer: u } },
+          { binding: 1, resource: { buffer: this.renderU } },
+          { binding: 2, resource: { buffer: this.rsurf } },
+          { binding: 3, resource: { buffer: this.cellFlags } },
+          { binding: 4, resource: c },
+          { binding: 5, resource: this.shadowSampler },
+          { binding: 6, resource: n },
+          { binding: 7, resource: this.tileSampler },
+          { binding: 8, resource: { buffer: this.lists } },
+          { binding: 9, resource: r },
+          { binding: 10, resource: this.edgeSampler },
+          { binding: 11, resource: { buffer: t.field } },
+          { binding: 12, resource: { buffer: this.threadBits } },
+          { binding: 13, resource: { buffer: t.x } },
+          { binding: 14, resource: { buffer: this.tframe } },
+          { binding: 15, resource: { buffer: this.kappa } },
+          { binding: 16, resource: l },
+          { binding: 17, resource: this.printView },
+          { binding: 18, resource: this.printSampler },
+        ],
+      });
   }
   renderParams() {
     let e = /* @__PURE__ */ new ArrayBuffer(464),
@@ -12349,6 +12682,110 @@ const FABRICS = {
     seed: 5005,
     perturbation: 0.003,
   },
+  chiffon: {
+    material: chiffon,
+    bundle: [9, 9],
+    sizeU: 0.62,
+    sizeV: 0.4,
+    z: 0,
+    angle: 0.06,
+    compressU: 0.025,
+    compressV: -0.002,
+    shear: 0.06,
+    collarRows: 2,
+    wear: {
+      center: [0.01, -0.006],
+      axis: [1, -1.15],
+      radii: [0.2, 0.14],
+      amount: 0.2,
+      cellSize: 0.075,
+      featureScale: 0.05,
+      defectThreshold: 0.96,
+      defectDensity: 0.05,
+      sparseFrom: 0.75,
+    },
+    wearStrengthLoss: [0.1, 0.2],
+    seed: 6006,
+    perturbation: 0.003,
+  },
+  gauze: {
+    material: gauze,
+    bundle: [2, 2],
+    sizeU: 0.62,
+    sizeV: 0.4,
+    z: 0,
+    angle: 0.06,
+    compressU: 0.025,
+    compressV: -0.002,
+    shear: 0.06,
+    collarRows: 2,
+    wear: {
+      center: [0.01, -0.006],
+      axis: [1, -1.15],
+      radii: [0.2, 0.14],
+      amount: 0.3,
+      cellSize: 0.075,
+      featureScale: 0.05,
+      defectThreshold: 0.96,
+      defectDensity: 0.1,
+      sparseFrom: 0.75,
+    },
+    wearStrengthLoss: [0.2, 0.3],
+    seed: 7007,
+    perturbation: 0.003,
+  },
+  lame: {
+    material: lame,
+    bundle: [8, 7],
+    sizeU: 0.62,
+    sizeV: 0.4,
+    z: 0,
+    angle: 0.06,
+    compressU: 0.025,
+    compressV: -0.002,
+    shear: 0.06,
+    collarRows: 2,
+    wear: {
+      center: [0.01, -0.006],
+      axis: [1, -1.15],
+      radii: [0.2, 0.14],
+      amount: 0.2,
+      cellSize: 0.075,
+      featureScale: 0.05,
+      defectThreshold: 0.96,
+      defectDensity: 0.05,
+      sparseFrom: 0.75,
+    },
+    wearStrengthLoss: [0.15, 0.25],
+    seed: 8008,
+    perturbation: 0.003,
+  },
+  ballistic: {
+    material: ballistic,
+    bundle: [6, 6],
+    sizeU: 0.62,
+    sizeV: 0.4,
+    z: 0,
+    angle: 0.06,
+    compressU: 0.025,
+    compressV: -0.002,
+    shear: 0.06,
+    collarRows: 2,
+    wear: {
+      center: [0.01, -0.006],
+      axis: [1, -1.15],
+      radii: [0.2, 0.14],
+      amount: 0.15,
+      cellSize: 0.075,
+      featureScale: 0.05,
+      defectThreshold: 0.96,
+      defectDensity: 0.02,
+      sparseFrom: 0.75,
+    },
+    wearStrengthLoss: [0.05, 0.1],
+    seed: 9009,
+    perturbation: 0.003,
+  },
 };
 function Zt(e = `denim`) {
   return [FABRICS[e] ?? FABRICS.denim];
@@ -12837,6 +13274,32 @@ struct BladeU {
 
 @group(0) @binding(10) var<uniform> BL: BladeU;
 
+// Wind (Engine.setWind): a pressure on every cloth node along the wind, gusting over space and time,
+// added to the external force at assembly. Pinned nodes and pieces that left the scene feel none.
+struct WindU {
+  // direction (xyz, unit), pressure (Pa)
+  dir: vec4<f32>,
+  // time (s), gust length (m), unused...
+  params: vec4<f32>,
+};
+
+@group(0) @binding(11) var<uniform> WD: WindU;
+
+@compute @workgroup_size(128)
+fn windTerms(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let n = gid.x;
+  if (n >= P.counts.x || WD.dir.w <= 0.0) { return; }
+  if ((nodes[n].flags & 1u) != 0u || x[n].w > 1.5) { return; }
+  let p = x[n].xyz;
+  let t = WD.params.x;
+  let k = 6.2831853 / max(WD.params.y, 0.01);
+  let gust = 0.55 + 0.25 * sin(k * (p.x + 0.3 * p.y) - 2.1 * t) + 0.2 * sin(0.53 * k * (p.y - 0.4 * p.x) + 1.3 * t) + 0.15 * sin(3.1 * k * p.x + 5.7 * t);
+  let L = P.layers[nodes[n].ijl >> 24u];
+  let area = L.a.w * L.b.x;
+  let b = 3u * n;
+  ext[b] = ext[b] + vec4<f32>(WD.dir.xyz * (WD.dir.w * area * max(gust, 0.0)), 0.0);
+}
+
 // a node's crossing (the centre of its span's bundle) in metres along the warp and the weft
 fn crossingOf(ijl: u32, bu: u32, bv: u32, pu: f32, pv: f32) -> vec2<f32> {
   let i = ijl & 0xFFFu;
@@ -12903,6 +13366,10 @@ var on = class {
   pierce;
   blade;
   bladeU;
+  wind;
+  windU;
+  windData = /* @__PURE__ */ new Float32Array(8);
+  windOn = !1;
   bladeData = /* @__PURE__ */ new Float32Array(4 + 8 * 16);
   bladeWords = /* @__PURE__ */ new Uint32Array(this.bladeData.buffer);
   strokes = [];
@@ -12927,6 +13394,8 @@ var on = class {
       (this.pierce = c.pipeline(`pierce`)),
       (this.blade = c.pipeline(`slash`)),
       (this.bladeU = a(e, `bladeU`, 4 * this.bladeData.length, i)),
+      (this.wind = c.pipeline(`windTerms`)),
+      (this.windU = a(e, `windU`, 32, i)),
       (this.group = c.bindGroup(`body`, {
         0: t.simParams,
         1: this.uniform,
@@ -12939,6 +13408,7 @@ var on = class {
         8: s,
         9: t.fieldEvents,
         10: this.bladeU,
+        11: this.windU,
       })),
       this.data.set([an.force, an.radius, 0, 0], 16),
       this.device.queue.writeBuffer(this.uniform, 0, this.data, 0, 20));
@@ -13012,7 +13482,19 @@ var on = class {
       this.device.queue.writeBuffer(this.exemptBuf, 0, this.exempt));
   }
   encode(e) {
-    this.count > 0 && e(this.terms, this.group, Math.ceil(this.solver.N / 128));
+    (this.count > 0 && e(this.terms, this.group, Math.ceil(this.solver.N / 128)),
+      this.windOn && e(this.wind, this.group, Math.ceil(this.solver.N / 128)));
+  }
+  // wind: unit direction, pressure (Pa; 0 switches it off), gust length (m)
+  setWind(e, t, n = 0.25) {
+    let r = this.windData;
+    (r.set([e[0], e[1], e[2], t], 0),
+      (r[5] = n),
+      (this.windOn = t > 0),
+      this.device.queue.writeBuffer(this.windU, 0, r));
+  }
+  tickWind(e) {
+    this.windOn && ((this.windData[4] = e), this.device.queue.writeBuffer(this.windU, 16, this.windData, 4, 4));
   }
   encodePierce(e) {
     this.sharp &&
@@ -14533,6 +15015,20 @@ var ClipRecorder = class {
 
 // settle substeps after a warm start from the denim's drape
 const WARM_SETTLE = 48;
+const TOOLS = [`hand`, `blade`, `claw`, `fist`, `pin`];
+// fist: sphere radius, heights (m) and timing (s) of a punch; claw: tip depth under the sheet, gap, radius
+const FIST = {
+  radius: 0.024,
+  top: 0.1,
+  bottom: -0.085,
+  down: 0.22,
+  hold: 0.15,
+  up: 0.45,
+  total: 0.82,
+  clawDepth: -0.006,
+  clawGap: 0.007,
+  clawRadius: 0.0015,
+};
 const Q = Dt.h,
   Rn = (e) => performance.timeOrigin + e,
   $ = new (class {
@@ -14581,9 +15077,18 @@ const Q = Dt.h,
     settleSteps = 420;
     // how the rest state was reached: `file` (drape file), `warm` (resampled denim drape + short settle), `flat`
     rested = ``;
-    // pointer tool: `hand` grips and pulls, `blade` cuts along the pointer's path
+    // pointer tool: `hand` grips and pulls, `blade` cuts along the pointer's path, `claw` pierces
+    // and drags, `fist` punches down through, `pin` holds a point
     tool = `hand`;
     strokes = /* @__PURE__ */ new Map();
+    // pointer-driven bodies: punches in flight and claws being dragged (bodyContact capsules)
+    fists = [];
+    claws = /* @__PURE__ */ new Map();
+    pinSeq = 0;
+    simTime = 0;
+    // simulated seconds per real second (slow motion below 1)
+    timeScale = 1;
+    windLevel = 0;
     audioPort = null;
     acoustic = null;
     lastPan = /* @__PURE__ */ new Float64Array(4);
@@ -14900,13 +15405,134 @@ const Q = Dt.h,
       return { origin: s, dir: E(w([o[0] / o[3], o[1] / o[3], o[2] / o[3]], s)) };
     }
     toolCursor() {
-      return this.tool === `blade` ? `crosshair` : `grab`;
+      return { blade: `crosshair`, claw: `cell`, fist: `pointer`, pin: `copy` }[this.tool] ?? `grab`;
     }
     setTool(e) {
-      if ((e !== `hand` && e !== `blade`) || e === this.tool) return;
-      (this.releaseAll(),
-        (this.tool = e),
-        this.ready && !this.stage && X({ type: `cursor`, cursor: this.toolCursor() }));
+      if (!TOOLS.includes(e) || e === this.tool) return;
+      // hands let go; pins stay (they are the point of the pin tool)
+      (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.claws.clear());
+      for (let [e, t] of [...this.grips]) t.pinned || this.endGrip(e);
+      ((this.tool = e), this.ready && !this.stage && X({ type: `cursor`, cursor: this.toolCursor() }));
+    }
+    // the point on the horizontal plane z under the pointer
+    planeHit(e, t, n) {
+      let { origin: r, dir: i } = this.ray(e, t);
+      if (Math.abs(i[2]) < 1e-6) return null;
+      let a = (n - r[2]) / i[2];
+      return a < 0 ? null : [r[0] + a * i[0], r[1] + a * i[1], n];
+    }
+    // Fist: a blunt sphere punched down through the sheet where the pointer hit, then drawn back up
+    fistPointer(e) {
+      if (e.phase !== `down` || this.fists.length >= 8) return;
+      let t = this.planeHit(e.x, e.y, 0);
+      t && (this.fists.push({ p: t, t0: this.simTime }), this.wake(), (this.dirty = !0));
+    }
+    // Claw: three sharp capsules riding just under the surface with the pointer, piercing and dragging
+    clawPointer(e) {
+      if (e.phase === `cancel` && e.id === -1) {
+        this.claws.clear();
+        return;
+      }
+      if (e.phase === `down`) {
+        if (this.claws.size >= 4) return;
+        let t = this.planeHit(e.x, e.y, FIST.clawDepth);
+        t && (this.claws.set(e.id, { tip: t, dir: [1, 0] }), this.wake(), (this.dirty = !0));
+      } else if (e.phase === `move`) {
+        let t = this.claws.get(e.id);
+        if (!t) return;
+        let n = this.planeHit(e.x, e.y, FIST.clawDepth);
+        if (!n) return;
+        let r = [n[0] - t.tip[0], n[1] - t.tip[1]],
+          i = Math.hypot(r[0], r[1]);
+        (i > 1e-4 && (t.dir = [r[0] / i, r[1] / i]), (t.tip = n), this.wake());
+      } else this.claws.delete(e.id);
+    }
+    // Pin: a stationary grip on the picked node; picking a pinned node again lets it go
+    pinPointer(e) {
+      if (e.phase !== `down`) return;
+      let t = { time: e.time, x: e.x, y: e.y },
+        n = ++this.pickToken,
+        r = A(this.camera, this.width / this.height),
+        i = (t.x / this.cssWidth) * this.width,
+        a = (t.y / this.cssHeight) * this.height,
+        o = Math.max(8, 0.016 * this.height);
+      this.interaction.pickAt(r.viewProj, i, a, this.width, this.height, o).then((e) => {
+        if (n !== this.pickToken || !e) return;
+        let i = this.interaction.holder(e.node);
+        if (i >= 0) {
+          for (let [e, t] of this.grips) if (t.slot === i) return void this.endGrip(e);
+          return;
+        }
+        let a = this.interaction.freeSlot(),
+          o = e.position;
+        if (a < 0 || !this.interaction.attach(e.node, o, a, e.window)) return;
+        let s = E(w(this.camera.target, r.eye)),
+          c = `pin${++this.pinSeq}`;
+        (this.grips.set(c, {
+          slot: a,
+          node: e.node,
+          hand: new We(o, te(s, -1)),
+          track: new Ge(t),
+          plane: o,
+          normal: s,
+          downPoint: o,
+          pinned: !0,
+        }),
+          this.audioPort?.postMessage({ grip: a, held: !0 }),
+          this.wake());
+      });
+    }
+    // the bodies the pointer tools drive this substep (fists in flight, claws), posed on the body contact
+    stepProps(e) {
+      let t = [],
+        n = this.simTime;
+      this.fists = this.fists.filter((e) => n - e.t0 < FIST.total);
+      for (let e of this.fists) {
+        let r = n - e.t0,
+          i =
+            r < FIST.down
+              ? FIST.top + (FIST.bottom - FIST.top) * (1 - Math.pow(1 - r / FIST.down, 3))
+              : r < FIST.down + FIST.hold
+                ? FIST.bottom
+                : FIST.bottom + (FIST.top - FIST.bottom) * Math.min(1, (r - FIST.down - FIST.hold) / FIST.up);
+        t.push({ a: [e.p[0], e.p[1], i], b: [e.p[0], e.p[1], i + 0.02], radius: FIST.radius, active: !0, sharp: !1 });
+      }
+      for (let e of this.claws.values())
+        for (let n = -1; n <= 1; n++) {
+          let r = [e.tip[0] - e.dir[1] * n * FIST.clawGap, e.tip[1] + e.dir[0] * n * FIST.clawGap, e.tip[2]];
+          t.push({ a: [r[0], r[1], r[2] + 0.03], b: r, radius: FIST.clawRadius, active: !0, sharp: !0 });
+        }
+      (t.length > 0 || this.body.count > 0) && this.body.setPose(t, e);
+    }
+    shake() {
+      if (!this.ready || this.stage) return;
+      let e = this.scene,
+        t = e.nodeCount,
+        n = new Float32Array(4 * t),
+        r = 6.2831853,
+        i = Math.random() * r,
+        a = Math.random() * r;
+      for (let o = 0; o < t; o++) {
+        if (e.pinned[o]) continue;
+        let t = e.position[3 * o],
+          s = e.position[3 * o + 1],
+          c = Math.sin((r * t) / 0.17 + i) * Math.cos((r * s) / 0.13 + a);
+        ((n[4 * o] = 0.25 * Math.sin((r * s) / 0.21 + a)),
+          (n[4 * o + 1] = 0.25 * Math.cos((r * t) / 0.19 + i)),
+          (n[4 * o + 2] = 0.9 * c));
+      }
+      (this.device.queue.writeBuffer(this.solver.v, 0, n), this.wake(), (this.dirty = !0));
+    }
+    setWind(e) {
+      this.windLevel = Math.max(0, Math.min(2, e | 0));
+      let t = [0, 6, 32][this.windLevel],
+        n = -0.6,
+        r = [Math.cos(n), Math.sin(n), 0.12],
+        i = Math.hypot(...r);
+      (this.body.setWind([r[0] / i, r[1] / i, r[2] / i], t), t > 0 && (this.wake(), (this.dirty = !0)));
+    }
+    setTimeScale(e) {
+      this.timeScale = Math.max(0.05, Math.min(1, +e || 1));
     }
     // Knife: each pointer sample picks the visible node under it (one pick in flight per pointer) and
     // the run from the previous pick's node is queued as a stroke (bodyContact.cut). A sample that
@@ -14954,6 +15580,18 @@ const Q = Dt.h,
       if (!this.ready || this.stage) return;
       if (this.tool === `blade`) {
         this.bladePointer(e);
+        return;
+      }
+      if (this.tool === `claw`) {
+        this.clawPointer(e);
+        return;
+      }
+      if (this.tool === `fist`) {
+        this.fistPointer(e);
+        return;
+      }
+      if (this.tool === `pin`) {
+        (e.phase === `cancel` && e.id === -1) || this.pinPointer(e);
         return;
       }
       let t = { time: e.time, x: e.x, y: e.y };
@@ -15012,9 +15650,17 @@ const Q = Dt.h,
         this.grips.size === 0 && X({ type: `cursor`, cursor: `grab` }));
     }
     releaseAll() {
-      (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.body?.clearStrokes());
+      (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.body?.clearStrokes(), this.claws.clear());
+      ((this.fists.length = 0), this.body && this.body.count > 0 && !this.stage && this.body.setPose([], Q));
       for (let e of [...this.grips.keys()]) this.endGrip(e);
       this.down.clear();
+    }
+    // orbit the camera: yaw and pitch deltas (rad); pitch 0 looks straight down
+    orbit(e, t) {
+      if (this.stage) return;
+      ((this.camera.yaw += e),
+        (this.camera.pitch = Math.max(0.03, Math.min(1.3, this.camera.pitch + t))),
+        (this.dirty = !0));
     }
     wheel(e) {
       if (!this.stage) {
@@ -15028,7 +15674,14 @@ const Q = Dt.h,
       return this.refineSteps <= 0 ? 0 : (this.refineSteps--, Ot.newtonIterations);
     }
     stepHandles(e, t) {
+      ((this.simTime += e), this.stepProps(e), this.body.tickWind(this.simTime));
       for (let [n, r] of [...this.grips]) {
+        if (r.pinned) {
+          (r.hand.step(e, [0, 0, 0]),
+            this.interaction.setTarget(r.hand.target, r.slot),
+            this.interaction.setPinch(r.hand.pinch, r.slot));
+          continue;
+        }
         if (r.track.upTime <= t) {
           this.endGrip(n);
           continue;
@@ -15117,12 +15770,13 @@ const Q = Dt.h,
       let t = Math.max(0, (e - this.lastFrame) / 1e3),
         n = Math.min(0.1, t);
       if (this.inFlight || (!this.asleep && (e - this.lastPresent) / 1e3 < 0.03133333333333333)) return;
-      this.lastFrame = e;
+      ((this.lastFrame = e),
+        (this.windLevel > 0 || this.fists.length > 0 || this.claws.size > 0) && !this.stage && this.wake());
       let r = 0;
       if (
         (this.visible &&
           !this.asleep &&
-          ((this.simBacklog += n),
+          ((this.simBacklog += n * this.timeScale),
           (r = Math.floor(this.simBacklog / Q)),
           r > 5 ? ((r = 5), (this.simBacklog = 0)) : (this.simBacklog -= r * Q)),
         this.stage && t > 0 && t < 1 && (this.pace += (1 - Math.exp(-t)) * ((r * Q) / t - this.pace)),
@@ -15283,7 +15937,23 @@ const Q = Dt.h,
         (new Uint32Array(n, 0, 4).set([1346458180, 1, e, Ht(this.scene)]), new Float32Array(n, 16).set(t));
         return n;
       }
-      if (e.op === `info`) return { nodes: this.solver.N, tool: this.tool, fabric: this.fabric, rested: this.rested };
+      if (e.op === `info`)
+        return {
+          nodes: this.solver.N,
+          tool: this.tool,
+          fabric: this.fabric,
+          rested: this.rested,
+          wind: this.windLevel,
+          timeScale: this.timeScale,
+          pins: [...this.grips.values()].filter((e) => e.pinned).length,
+          fists: this.fists.length,
+          bodies: this.body.count,
+        };
+      if (e.op === `punch`) {
+        (this.fists.push({ p: e.at ?? [0, 0, 0], t0: this.simTime }), this.wake());
+        await this.runSubsteps(e.substeps ?? 2);
+        return { fists: this.fists.length, bodies: this.body.count, cuts: await this.cutCrossings() };
+      }
       return e.op === `camera`
         ? (e.distance !== void 0 && (this.camera.distance = e.distance),
           e.pitch !== void 0 && (this.camera.pitch = e.pitch),
@@ -15318,11 +15988,26 @@ In.onmessage = (t) => {
     case `wheel`:
       $.wheel(n.deltaY);
       break;
+    case `orbit`:
+      $.orbit(n.yaw, n.pitch);
+      break;
+    case `print`:
+      $.ready && ($.renderer.setPrint(n.bitmap), ($.dirty = !0), n.bitmap?.close());
+      break;
     case `reset`:
       $.reset();
       break;
     case `tool`:
       $.setTool(n.tool);
+      break;
+    case `wind`:
+      $.setWind(n.level);
+      break;
+    case `shake`:
+      $.shake();
+      break;
+    case `time`:
+      $.setTimeScale(n.scale);
       break;
     case `capture`:
       $.capture();

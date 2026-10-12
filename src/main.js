@@ -284,6 +284,12 @@ var m = document.createElement(`canvas`);
 var h = document.querySelector(`.status`),
   g = document.querySelector(`.reset`),
   toolButton = document.querySelector(`.tool`),
+  toolsMenu = document.querySelector(`.tools`),
+  toolItems = [...toolsMenu.querySelectorAll(`[data-tool]`)],
+  fxItems = [...toolsMenu.querySelectorAll(`[data-fx]`)],
+  currentTool = `hand`,
+  windLevel = 0,
+  slowMotion = !1,
   _ = document.querySelector(`.loader`),
   v = document.querySelector(`.menu`),
   y = document.querySelector(`.experiences`),
@@ -339,17 +345,33 @@ function j(e, t) {
 function M(e) {
   C({ type: `pointer`, phase: `cancel`, id: -1, seq: k++, time: A(e), x: 0, y: 0 });
 }
+var orbiting = null;
 function bindCanvas(m) {
   (m.addEventListener(`pointerdown`, (e) => {
+    if (e.pointerType === `mouse` && e.button === 2) {
+      ((orbiting = { id: e.pointerId, x: e.clientX, y: e.clientY }), m.setPointerCapture(e.pointerId));
+      return;
+    }
     (e.pointerType !== `mouse` || e.button === 0) &&
       (w.unlock(), touchShred(), m.setPointerCapture(e.pointerId), j(`down`, e));
   }),
+    m.addEventListener(`contextmenu`, (e) => e.preventDefault()),
     m.addEventListener(`pointermove`, (e) => {
+      if (orbiting && e.pointerId === orbiting.id) {
+        (C({ type: `orbit`, yaw: (e.clientX - orbiting.x) * 0.006, pitch: (e.clientY - orbiting.y) * 0.006 }),
+          (orbiting.x = e.clientX),
+          (orbiting.y = e.clientY));
+        return;
+      }
       let t = e.getCoalescedEvents?.() ?? [];
       t.length === 0 && j(`move`, e);
       for (let e of t) j(`move`, e);
     }),
     m.addEventListener(`pointerup`, (e) => {
+      if (orbiting && e.pointerId === orbiting.id) {
+        orbiting = null;
+        return;
+      }
       (w.unlock(), j(`up`, e));
     }),
     m.addEventListener(`pointercancel`, (e) => j(`cancel`, e)),
@@ -363,7 +385,7 @@ function bindCanvas(m) {
     ));
 }
 (window.addEventListener(`keydown`, (e) => {
-  e.key === `Escape` && (N() && (P(!1), v.focus()), M(e.timeStamp));
+  e.key === `Escape` && (N() && (P(!1), v.focus()), toolsOpen() && (openTools(!1), toolButton.focus()), M(e.timeStamp));
 }),
   window.addEventListener(`blur`, () => M(performance.now())),
   document.addEventListener(`visibilitychange`, () => {
@@ -401,12 +423,50 @@ for (let e of fabricButtons)
       g.offsetWidth,
       g.classList.add(`spin`));
   }));
+// ---------------------------------------------------------------- tools menu
+const TOOL_NAMES = { hand: `Hand`, blade: `Knife`, claw: `Claw`, fist: `Fist`, pin: `Pin` };
 function setTool(e) {
-  (toolButton.setAttribute(`aria-pressed`, String(e === `blade`)), C({ type: `tool`, tool: e }));
+  if (!TOOL_NAMES[e]) return;
+  currentTool = e;
+  ((toolButton.dataset.tool = e), (toolButton.querySelector(`.tool-name`).textContent = TOOL_NAMES[e]));
+  for (let t of toolItems) t.setAttribute(`aria-checked`, String(t.dataset.tool === e));
+  C({ type: `tool`, tool: e });
 }
-toolButton.addEventListener(`click`, () => {
-  (w.unlock(), P(!1), setTool(toolButton.getAttribute(`aria-pressed`) === `true` ? `hand` : `blade`));
-});
+function setWind(e) {
+  windLevel = ((e % 3) + 3) % 3;
+  toolsMenu.querySelector(`[data-fx="wind"]`).textContent = `Wind: ${[`off`, `breeze`, `gale`][windLevel]}`;
+  C({ type: `wind`, level: windLevel });
+}
+function setSlow(e) {
+  slowMotion = !!e;
+  toolsMenu.querySelector(`[data-fx="slow"]`).setAttribute(`aria-checked`, String(slowMotion));
+  C({ type: `time`, scale: slowMotion ? 0.2 : 1 });
+}
+var toolsOpen = () => !toolsMenu.hasAttribute(`hidden`);
+function openTools(e) {
+  ((toolsMenu.hidden = !e), toolButton.setAttribute(`aria-expanded`, String(e)), e && P(!1));
+}
+(toolButton.addEventListener(`click`, () => {
+  (w.unlock(), openTools(!toolsOpen()));
+}),
+  document.addEventListener(`pointerdown`, (e) => {
+    toolsOpen() &&
+      !(e.target instanceof Node && (toolsMenu.contains(e.target) || toolButton.contains(e.target))) &&
+      openTools(!1);
+  }));
+for (let e of toolItems)
+  e.addEventListener(`click`, () => {
+    (w.unlock(), setTool(e.dataset.tool), openTools(!1));
+  });
+for (let e of fxItems)
+  e.addEventListener(`click`, () => {
+    (w.unlock(),
+      e.dataset.fx === `wind`
+        ? setWind(windLevel + 1)
+        : e.dataset.fx === `slow`
+          ? setSlow(!slowMotion)
+          : e.dataset.fx === `shake` && (C({ type: `shake` }), openTools(!1)));
+  });
 window.addEventListener(`keydown`, (e) => {
   shortcut(e);
 });
@@ -477,7 +537,10 @@ function startWorker(name) {
   let e = m.transferControlToOffscreen();
   (C({ type: `init`, canvas: e, fabric: name, settleSteps, ...T() }, [e]),
     w.reconnect(),
-    toolButton.getAttribute(`aria-pressed`) === `true` && C({ type: `tool`, tool: `blade` }));
+    currentTool !== `hand` && C({ type: `tool`, tool: currentTool }),
+    windLevel && C({ type: `wind`, level: windLevel }),
+    slowMotion && C({ type: `time`, scale: 0.2 }),
+    printCanvas && sendPrint());
 }
 
 // ---------------------------------------------------------------- shred score
@@ -661,19 +724,48 @@ function shortcut(e) {
     return;
   }
   if (!sheet.hidden) return;
+  if (t.startsWith(`arrow`)) {
+    (e.preventDefault(),
+      C({
+        type: `orbit`,
+        yaw: t === `arrowleft` ? -0.08 : t === `arrowright` ? 0.08 : 0,
+        pitch: t === `arrowup` ? -0.06 : t === `arrowdown` ? 0.06 : 0,
+      }));
+    return;
+  }
+  let n = {
+    1: `hand`,
+    2: `blade`,
+    3: `claw`,
+    4: `fist`,
+    5: `pin`,
+    h: `hand`,
+    k: `blade`,
+    c: `claw`,
+    b: `fist`,
+    p: `pin`,
+  }[t];
+  if (n) {
+    setTool(n);
+    return;
+  }
   t === `v`
     ? recordButton.click()
-    : t === `k`
-      ? toolButton.click()
-      : t === `r`
-        ? g.click()
-        : t === `s`
-          ? requestCard()
-          : t === `f` &&
-            fabricButtons.length &&
-            fabricButtons[
-              (fabricButtons.findIndex((e) => e.dataset.fabric === fabric) + 1) % fabricButtons.length
-            ].click();
+    : t === `w`
+      ? setWind(windLevel + 1)
+      : t === `t`
+        ? setSlow(!slowMotion)
+        : t === `x`
+          ? C({ type: `shake` })
+          : t === `r`
+            ? g.click()
+            : t === `s`
+              ? requestCard()
+              : t === `f` &&
+                fabricButtons.length &&
+                fabricButtons[
+                  (fabricButtons.findIndex((e) => e.dataset.fabric === fabric) + 1) % fabricButtons.length
+                ].click();
 }
 
 startWorker(fabric);
@@ -871,3 +963,61 @@ async function finishRecording(e) {
 recordButton.addEventListener(`click`, () => {
   rec ? stopRecording() : startRecording();
 });
+
+// ---------------------------------------------------------------- print a photo on the fabric
+// The image is drawn cover-fit into a canvas the shape of the sheet and handed to the worker as a
+// bitmap, which becomes a texture the surface pass multiplies into the yarns' albedo. Nothing is uploaded.
+var printCanvas = null,
+  printInput = document.querySelector(`.print-input`),
+  printPick = document.querySelector(`[data-print="pick"]`),
+  printClear = document.querySelector(`[data-print="clear"]`);
+async function setPrintFrom(e) {
+  if (!e || !/^image\//.test(e.type)) return;
+  let t;
+  try {
+    t = await createImageBitmap(e);
+  } catch {
+    ((h.textContent = `That image could not be read.`),
+      h.classList.add(`visible`),
+      setTimeout(() => h.classList.remove(`visible`), 2600));
+    return;
+  }
+  let n = 1240,
+    r = 800;
+  ((printCanvas ||= document.createElement(`canvas`)), ((printCanvas.width = n), (printCanvas.height = r)));
+  let i = printCanvas.getContext(`2d`),
+    a = Math.max(n / t.width, r / t.height),
+    o = t.width * a,
+    s = t.height * a;
+  (i.drawImage(t, (n - o) / 2, (r - s) / 2, o, s), t.close());
+  ((printClear.parentElement.hidden = !1), sendPrint());
+  ((h.textContent = `Printed. Now rip it.`),
+    h.classList.add(`visible`),
+    setTimeout(() => h.classList.remove(`visible`), 2200));
+}
+async function sendPrint() {
+  if (!printCanvas) return;
+  let e = await createImageBitmap(printCanvas);
+  C({ type: `print`, bitmap: e }, [e]);
+}
+function clearPrint() {
+  ((printCanvas = null), (printClear.parentElement.hidden = !0), C({ type: `print`, bitmap: null }));
+}
+(printPick.addEventListener(`click`, () => {
+  (P(!1), printInput.click());
+}),
+  printClear.addEventListener(`click`, () => {
+    (P(!1), clearPrint());
+  }),
+  printInput.addEventListener(`change`, () => {
+    (setPrintFrom(printInput.files?.[0]), (printInput.value = ``));
+  }),
+  window.addEventListener(`dragover`, (e) => e.preventDefault()),
+  window.addEventListener(`drop`, (e) => {
+    (e.preventDefault(), setPrintFrom(e.dataTransfer?.files?.[0]));
+  }),
+  window.addEventListener(`paste`, (e) => {
+    let t = [...(e.clipboardData?.files ?? [])].find((e) => /^image\//.test(e.type));
+    t && setPrintFrom(t);
+  }));
+window.__fabricPrint = setPrintFrom;
