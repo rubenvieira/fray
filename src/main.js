@@ -993,9 +993,12 @@ async function setPrintFrom(e) {
     s = t.height * a;
   (i.drawImage(t, (n - o) / 2, (r - s) / 2, o, s), t.close());
   ((printClear.parentElement.hidden = !1), sendPrint());
-  ((h.textContent = `Printed. Now rip it.`),
+  ((h.textContent =
+    fabric === `linen` || fabric === `gauze` || fabric === `chiffon`
+      ? `Printed. Now rip it.`
+      : `Printed. Now rip it (linen shows a print best).`),
     h.classList.add(`visible`),
-    setTimeout(() => h.classList.remove(`visible`), 2200));
+    setTimeout(() => h.classList.remove(`visible`), 3200));
 }
 async function sendPrint() {
   if (!printCanvas) return;
