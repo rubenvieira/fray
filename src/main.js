@@ -336,7 +336,8 @@ function M(e) {
 }
 function bindCanvas(m) {
   (m.addEventListener(`pointerdown`, (e) => {
-    (e.pointerType !== `mouse` || e.button === 0) && (w.unlock(), m.setPointerCapture(e.pointerId), j(`down`, e));
+    (e.pointerType !== `mouse` || e.button === 0) &&
+      (w.unlock(), touchShred(), m.setPointerCapture(e.pointerId), j(`down`, e));
   }),
     m.addEventListener(`pointermove`, (e) => {
       let t = e.getCoalescedEvents?.() ?? [];
@@ -387,7 +388,13 @@ for (let e of fabricButtons)
   N() && !(e.target instanceof Node && (y.contains(e.target) || v.contains(e.target))) && P(!1);
 }),
   g.addEventListener(`click`, () => {
-    (w.unlock(), P(!1), C({ type: `reset` }), g.classList.remove(`spin`), g.offsetWidth, g.classList.add(`spin`));
+    (w.unlock(),
+      P(!1),
+      resetShred(),
+      C({ type: `reset` }),
+      g.classList.remove(`spin`),
+      g.offsetWidth,
+      g.classList.add(`spin`));
   }));
 function setTool(e) {
   (toolButton.setAttribute(`aria-pressed`, String(e === `blade`)), C({ type: `tool`, tool: e }));
@@ -396,7 +403,7 @@ toolButton.addEventListener(`click`, () => {
   (w.unlock(), P(!1), setTool(toolButton.getAttribute(`aria-pressed`) === `true` ? `hand` : `blade`));
 });
 window.addEventListener(`keydown`, (e) => {
-  e.key.toLowerCase() === `k` && !e.metaKey && !e.ctrlKey && !e.altKey && toolButton.click();
+  shortcut(e);
 });
 var F = new Map(),
   I = () => {},
@@ -433,7 +440,9 @@ function onWorkerMessage(e) {
       ? w.cue(t.cue)
       : t.type === `cursor`
         ? (m.style.cursor = t.cursor)
-        : t.type === `stats` && (window.__fabricStats = t.stats);
+        : t.type === `stats`
+          ? onStats(t.stats)
+          : t.type === `capture` && onCapture(t.blob);
 }
 function onWorkerError(e) {
   (x(`The fabric engine stopped unexpectedly.`), console.error(e));
@@ -442,7 +451,7 @@ function onWorkerError(e) {
 // device and every buffer go with the old one) on a fresh canvas, since an OffscreenCanvas can be
 // transferred only once, and re-wires the tear-sound channel and the pointer tool to it.
 function startWorker(name) {
-  fabric = name;
+  ((fabric = name), resetShred());
   if (S) {
     (S.terminate(), w.cue({ kind: `stop` }));
     let e = document.createElement(`canvas`);
@@ -461,4 +470,187 @@ function startWorker(name) {
     w.reconnect(),
     toolButton.getAttribute(`aria-pressed`) === `true` && C({ type: `tool`, tool: `blade` }));
 }
+
+// ---------------------------------------------------------------- shred score
+// Threads shredded = yarns ruptured + yarns pulled out of the weave (the solver's counters, streamed
+// with the stats). The clock starts at the first touch after a reset and stops when a card is captured.
+var scoreEl = document.querySelector(`.score`),
+  scoreN = scoreEl.querySelector(`.score-n`),
+  scoreT = scoreEl.querySelector(`.score-t`),
+  shred = { target: 0, shown: 0, startedAt: 0, frozenAt: 0, raf: 0 };
+function resetShred() {
+  ((shred.target = 0), (shred.shown = 0), (shred.startedAt = 0), (shred.frozenAt = 0));
+  ((scoreN.textContent = `0`), (scoreT.textContent = `0:00`), scoreEl.classList.remove(`visible`));
+}
+function touchShred() {
+  shred.startedAt || ((shred.startedAt = performance.now()), tickShred());
+}
+function shredSeconds() {
+  return shred.startedAt ? ((shred.frozenAt || performance.now()) - shred.startedAt) / 1e3 : 0;
+}
+function fmtTime(e) {
+  let t = Math.floor(e);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, `0`)}`;
+}
+function tickShred() {
+  cancelAnimationFrame(shred.raf);
+  let e = () => {
+    let t = shred.target - shred.shown;
+    ((shred.shown += Math.abs(t) < 1 ? t : t * 0.18), (scoreN.textContent = Math.round(shred.shown).toLocaleString()));
+    scoreT.textContent = fmtTime(shredSeconds());
+    (shred.startedAt && !shred.frozenAt) || Math.abs(t) >= 1 ? (shred.raf = requestAnimationFrame(e)) : 0;
+  };
+  shred.raf = requestAnimationFrame(e);
+}
+function onStats(e) {
+  window.__fabricStats = e;
+  let t = (e.ruptures ?? 0) + (e.pulledOut ?? 0);
+  t !== shred.target && ((shred.target = t), t > 0 && (scoreEl.classList.add(`visible`), touchShred()), tickShred());
+}
+function verdict(e) {
+  return e < 1
+    ? `Untouched`
+    : e < 100
+      ? `Gentle`
+      : e < 500
+        ? `Rowdy`
+        : e < 2e3
+          ? `Menace`
+          : e < 5e3
+            ? `Shredder`
+            : `Absolute unit`;
+}
+
+// ---------------------------------------------------------------- share card
+var shareButton = document.querySelector(`.share`),
+  sheet = document.querySelector(`.sheet`),
+  sheetImg = sheet.querySelector(`.sheet-img`),
+  sheetText = sheet.querySelector(`.sheet-text`),
+  sheetX = sheet.querySelector(`.sheet-x`),
+  sheetShare = sheet.querySelector(`.sheet-share`),
+  sheetSave = sheet.querySelector(`.sheet-save`),
+  sheetClose = sheet.querySelector(`.sheet-close`),
+  cardFile = null,
+  cardUrl = null;
+const SITE = `${location.origin}${location.pathname}`;
+function fabricLabel() {
+  return fabric === `denim` ? `denim` : fabric === `burlap` ? `burlap` : fabric === `tartan` ? `tartan` : fabric;
+}
+function shareText() {
+  let e = shred.target,
+    t =
+      e > 0
+        ? `I shredded ${e.toLocaleString()} threads of ${fabricLabel()} in ${fmtTime(shredSeconds())}. Verdict: ${verdict(e)}.`
+        : `Virtual ${fabricLabel()}, real tearing, in your browser.`;
+  return `${t} 🧵✂️ Think you can do worse? ${SITE} #BreakThatDenim`;
+}
+function requestCard() {
+  if (shareButton.getAttribute(`aria-busy`) === `true`) return;
+  (shareButton.setAttribute(`aria-busy`, `true`),
+    P(!1),
+    shred.startedAt && !shred.frozenAt && (shred.frozenAt = performance.now()));
+  C({ type: `capture` });
+  setTimeout(() => shareButton.removeAttribute(`aria-busy`), 4e3);
+}
+async function composeCard(e) {
+  let t = await createImageBitmap(e),
+    n = 1200,
+    r = 675,
+    i = document.createElement(`canvas`);
+  ((i.width = n), (i.height = r));
+  let a = i.getContext(`2d`),
+    o = Math.max(n / t.width, r / t.height),
+    s = t.width * o,
+    c = t.height * o;
+  (a.drawImage(t, (n - s) / 2, (r - c) / 2, s, c), t.close());
+  let l = a.createLinearGradient(0, r * 0.45, 0, r);
+  (l.addColorStop(0, `rgba(2,2,3,0)`),
+    l.addColorStop(1, `rgba(2,2,3,0.94)`),
+    (a.fillStyle = l),
+    a.fillRect(0, 0, n, r));
+  let u = (e, t, n, r, i, o, s = `left`) => {
+    ((a.font = e), (a.fillStyle = t), (a.letterSpacing = n), (a.textAlign = s), a.fillText(r, i, o));
+  };
+  (u(`600 20px Oswald`, `#c9883f`, `8px`, `BREAK THAT`, 56, r - 136),
+    u(`400 86px Anton`, `#e9ebf1`, `3px`, `DENIM`, 56, r - 56),
+    (a.strokeStyle = `#c9883f`),
+    (a.lineWidth = 3),
+    a.setLineDash([10, 6]),
+    a.beginPath(),
+    a.moveTo(58, r - 36),
+    a.lineTo(300, r - 36),
+    a.stroke());
+  let d = shred.target;
+  (u(`400 120px Anton`, `#e9ebf1`, `2px`, d.toLocaleString(), n - 56, r - 118, `right`),
+    u(
+      `600 22px Oswald`,
+      `#c9883f`,
+      `6px`,
+      `THREADS SHREDDED · ${fmtTime(shredSeconds())} · ${fabricLabel().toUpperCase()}`,
+      n - 56,
+      r - 78,
+      `right`,
+    ),
+    u(`500 20px Oswald`, `#e9ebf1b0`, `4px`, `VERDICT: ${verdict(d).toUpperCase()}`, n - 56, r - 40, `right`));
+  return new Promise((e) => i.toBlob(e, `image/png`));
+}
+async function onCapture(e) {
+  shareButton.removeAttribute(`aria-busy`);
+  if (!e) {
+    ((h.textContent = `Could not capture the frame.`),
+      h.classList.add(`visible`),
+      setTimeout(() => h.classList.remove(`visible`), 2600));
+    return;
+  }
+  let t = await composeCard(e);
+  (cardUrl && URL.revokeObjectURL(cardUrl), (cardUrl = URL.createObjectURL(t)));
+  cardFile = new File([t], `break-that-denim-${fabric}.png`, { type: `image/png` });
+  let n = shareText();
+  ((sheetImg.src = cardUrl),
+    (sheetText.textContent = n),
+    (sheetX.href = `https://x.com/intent/post?text=${encodeURIComponent(n)}`),
+    (sheetSave.href = cardUrl),
+    (sheetSave.download = cardFile.name),
+    (sheetShare.hidden = !(navigator.canShare && navigator.canShare({ files: [cardFile] }))),
+    (sheet.hidden = !1),
+    sheetX.focus());
+}
+function closeSheet() {
+  sheet.hidden || ((sheet.hidden = !0), shareButton.focus());
+}
+(shareButton.addEventListener(`click`, () => {
+  (w.unlock(), requestCard());
+}),
+  sheetClose.addEventListener(`click`, closeSheet),
+  sheet.addEventListener(`pointerdown`, (e) => {
+    e.target === sheet && closeSheet();
+  }),
+  sheetShare.addEventListener(`click`, async () => {
+    try {
+      await navigator.share({ files: [cardFile], text: shareText(), title: `Break That Denim` });
+    } catch {}
+  }));
+
+// ---------------------------------------------------------------- shortcuts
+function shortcut(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  let t = e.key.toLowerCase();
+  if (t === `escape`) {
+    closeSheet();
+    return;
+  }
+  if (!sheet.hidden) return;
+  t === `k`
+    ? toolButton.click()
+    : t === `r`
+      ? g.click()
+      : t === `s`
+        ? requestCard()
+        : t === `f` &&
+          fabricButtons.length &&
+          fabricButtons[
+            (fabricButtons.findIndex((e) => e.dataset.fabric === fabric) + 1) % fabricButtons.length
+          ].click();
+}
+
 startWorker(fabric);

@@ -11,8 +11,16 @@ Beyond the original site, this build adds:
 - **Knife tool** (dock button or the `K` key): drag to slash the cloth instead of pulling it. The
   stroke cuts every yarn crossing along its path in weave space, so the slit is continuous and evenly
   wide however fast you move; switch back to the hand and pull the slit open to run the tear.
-- **Fabric picker** (in the eye menu): the same sheet woven as **denim** (3/1 indigo twill) or
-  **burlap** (plain-weave jute hessian: coarse open weave, stiff brittle yarns, lots of fray).
+- **Fabric picker** (in the eye menu, or the `F` key to cycle): the same sheet woven as **denim**
+  (3/1 indigo twill), **burlap** (plain-weave jute hessian: coarse, open, brittle, frays a lot),
+  **tartan** (2/2 worsted wool twill with a Royal Stewart-style sett, soft and hairy), **satin**
+  (5-harness crimson silk: glossy floats, rips run straight) or **linen** (ecru plain-weave canvas).
+- **Shred score**: a live count of threads shredded (yarns ruptured plus yarns pulled out of the
+  weave, from the solver's own counters) with a clock that starts at your first touch, and a verdict
+  tier from Gentle to Absolute unit.
+- **Share** (dock button or `S`): grabs the frame, composes a 1200x675 card with your score, time,
+  fabric and verdict, and offers Post on X (pre-written text), the native share sheet with the image
+  on phones, or saving the PNG. `R` resets, `K` toggles the knife, `Esc` closes.
 
 ## Requirements
 
@@ -59,11 +67,14 @@ public/logo.png, og_image.jpeg, robots.txt
    `tear-voice` AudioWorklet, which synthesises the tearing sound from grains of the recorded sample.
 4. The "Smilie" experience lazily fetches the GLB + clip, plays an ambient loop and a laugh, and the worker
    reacts to the laugh's loudness envelope.
-5. The knife reuses the claw-piercing machinery of that experience: a `slash` compute pass in the body-contact
+5. The share card: the worker copies the frame's canvas texture to a buffer inside the frame's own
+   command buffer (a WebGPU canvas cannot be read back directly), converts it to a PNG with a 2D
+   OffscreenCanvas and posts it to the page, which draws the card with the loaded display fonts.
+6. The knife reuses the claw-piercing machinery of that experience: a `slash` compute pass in the body-contact
    shader marks crossings along the stroke as cut (damage code 255), and the existing field update, span
    coupling, fray and edge rendering take it from there. Strokes are picked per pointer sample with the same
    GPU pick the hand uses, and queued to the next solver substep.
-6. Fabrics are presets (`FABRICS` in `src/worker.js`): yarn mechanics, weave (twill repeat / warp-over), node
+7. Fabrics are presets (`FABRICS` in `src/worker.js`): yarn mechanics, weave (twill repeat / warp-over), node
    bundling and wear. The renderer branches on the material id in the layer uniform for the yarn, rim-fibre
    and fray colours. Switching fabric restarts the worker on a fresh canvas so the old GPU device is released.
    Each fabric ships its settled rest state (`public/drape*.bin`); without one the solver settles on load.
@@ -71,9 +82,10 @@ public/logo.png, og_image.jpeg, robots.txt
 ### Generating a drape file
 
 `public/drape.bin` is the denim's settled rest state; the loader skips the 420-substep settle when the file's
-scene hash matches. Burlap ships without one yet, so it settles on first load (a few seconds on a real GPU,
+scene hash matches. The other fabrics ship without one yet, so they settle on first load (a few seconds on a real GPU,
 shown as the loader holding at 70%). To generate `public/drape-burlap.bin`, open the page on a WebGPU
-machine, pick Burlap, wait for it to finish loading, then run in the console:
+machine, pick the fabric, wait for it to finish loading, then run in the console (naming the file
+`drape-<fabric>.bin`):
 
 ```js
 __fabricDev({ op: "drape" }).then((b) => {

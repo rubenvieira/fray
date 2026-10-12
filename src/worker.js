@@ -234,6 +234,139 @@ const p = 18e-8,
     thickness: 1e-3,
     clothFriction: 0.55,
     airDrag: 2.2,
+  },
+  // a yarn preset with the denim's viscosities and softening unless overridden
+  yarnOf = (e) => ({
+    eaCompress: 4,
+    axialViscosity: 2e-4,
+    bendViscosity: 0.02,
+    softeningOpening: 3e-4,
+    ...e,
+  }),
+  // Tartan: worsted wool in a 2/2 twill, each yarn one colour of the sett (the renderer colours yarn i
+  // by its place in the sett, warp and weft alike, which is what makes the plaid). Wool is soft,
+  // stretchy and weak next to cotton, and very hairy.
+  tartan = {
+    id: 2,
+    name: `tartan-2x2`,
+    pitchU: 7e-4,
+    pitchV: 7e-4,
+    yarns: [
+      yarnOf({
+        linearDensity: 8.5e-5,
+        eaLow: 3,
+        eaHigh: 60,
+        crimpStrain: 0.05,
+        bendRigidity: 2e-8,
+        strength: 6,
+        width: 6.5e-4,
+        height: 3e-4,
+        crimpAmplitude: 1e-4,
+      }),
+      yarnOf({
+        linearDensity: 8.5e-5,
+        eaLow: 3,
+        eaHigh: 60,
+        crimpStrain: 0.05,
+        bendRigidity: 2e-8,
+        strength: 6.2,
+        width: 6.5e-4,
+        height: 3e-4,
+        crimpAmplitude: 1e-4,
+      }),
+    ],
+    twillRepeat: 4,
+    twillWarpOver: 2,
+    shearStiffness: 30,
+    crossingFriction: 0.45,
+    crossingNormal0: 0.18,
+    crossingWrap: 0.3,
+    thickness: 8e-4,
+    clothFriction: 0.5,
+    airDrag: 1.8,
+  },
+  // Satin: a 5-harness silk satin (warp over four of five picks). Fine, stiff filament yarns with no
+  // hair and little crimp; the long floats shear easily and a rip runs straight along them.
+  satin = {
+    id: 3,
+    name: `satin-5`,
+    pitchU: 4.5e-4,
+    pitchV: 5e-4,
+    yarns: [
+      yarnOf({
+        linearDensity: 3.2e-5,
+        eaLow: 8,
+        eaHigh: 200,
+        crimpStrain: 0.012,
+        bendRigidity: 5e-9,
+        strength: 5,
+        width: 4.6e-4,
+        height: 1.6e-4,
+        crimpAmplitude: 6e-5,
+        softeningOpening: 1.5e-4,
+      }),
+      yarnOf({
+        linearDensity: 3e-5,
+        eaLow: 8,
+        eaHigh: 200,
+        crimpStrain: 0.01,
+        bendRigidity: 5e-9,
+        strength: 5,
+        width: 4.2e-4,
+        height: 1.5e-4,
+        crimpAmplitude: 3e-5,
+        softeningOpening: 1.5e-4,
+      }),
+    ],
+    twillRepeat: 5,
+    twillWarpOver: 4,
+    shearStiffness: 25,
+    crossingFriction: 0.2,
+    crossingNormal0: 0.12,
+    crossingWrap: 0.25,
+    thickness: 3.5e-4,
+    clothFriction: 0.3,
+    airDrag: 1.4,
+  },
+  // Linen: an undyed plain-weave flax canvas. Strong, crisp yarns with slubs; firmer than denim.
+  linen = {
+    id: 4,
+    name: `linen-plain`,
+    pitchU: 6e-4,
+    pitchV: 6e-4,
+    yarns: [
+      yarnOf({
+        linearDensity: 9e-5,
+        eaLow: 8,
+        eaHigh: 220,
+        crimpStrain: 0.03,
+        bendRigidity: 6e-8,
+        strength: 10,
+        width: 5.5e-4,
+        height: 2.5e-4,
+        crimpAmplitude: 1.1e-4,
+      }),
+      yarnOf({
+        linearDensity: 9e-5,
+        eaLow: 8,
+        eaHigh: 220,
+        crimpStrain: 0.03,
+        bendRigidity: 6e-8,
+        strength: 10.5,
+        width: 5.5e-4,
+        height: 2.5e-4,
+        crimpAmplitude: 1.1e-4,
+      }),
+    ],
+    twillRepeat: 2,
+    twillWarpOver: 1,
+    shearStiffness: 45,
+    crossingFriction: 0.4,
+    crossingNormal0: 0.2,
+    crossingWrap: 0.3,
+    thickness: 6e-4,
+    clothFriction: 0.45,
+    airDrag: 1.6,
   };
 function h(e, t, n = t) {
   for (let e of [t, n])
@@ -1987,6 +2120,73 @@ struct Look {
 // (its variation averages out within the pixel and must not alias into noise), 1 from 3 px.
 fn resolved(scale: f32, pix: f32) -> f32 { return clamp((scale / max(pix, 1e-9) - 0.75) / 2.25, 0.0, 1.0); }
 
+// ---------------------------------------------------------------- fabrics (LayerR.refine.w)
+// 0 denim (indigo 3/1 twill), 1 burlap (jute plain weave), 2 tartan (2/2 wool twill), 3 satin (5-harness
+// silk), 4 linen (plain-weave flax). Family-mean albedos for the LOD blend of the surface, and the rim's
+// loosened fibre: its pale (undyed / core) and dyed (surface) fibre.
+fn fabricWarpMean(m: u32) -> vec3<f32> {
+  switch m {
+    case 1u: { return vec3<f32>(0.42, 0.26, 0.11); }
+    case 2u: { return vec3<f32>(0.4, 0.09, 0.07); }
+    case 3u: { return vec3<f32>(0.5, 0.03, 0.05); }
+    case 4u: { return vec3<f32>(0.6, 0.52, 0.39); }
+    default: { return vec3<f32>(0.045, 0.065, 0.135); }
+  }
+}
+fn fabricWeftMean(m: u32) -> vec3<f32> {
+  switch m {
+    case 1u: { return vec3<f32>(0.39, 0.24, 0.1); }
+    case 2u: { return vec3<f32>(0.4, 0.09, 0.07); }
+    case 3u: { return vec3<f32>(0.36, 0.02, 0.03); }
+    case 4u: { return vec3<f32>(0.58, 0.5, 0.38); }
+    default: { return vec3<f32>(0.26, 0.27, 0.28); }
+  }
+}
+fn fabricRimPale(m: u32) -> vec3<f32> {
+  switch m {
+    case 1u: { return vec3<f32>(0.62, 0.46, 0.24); }
+    case 2u: { return vec3<f32>(0.7, 0.62, 0.56); }
+    case 3u: { return vec3<f32>(0.8, 0.5, 0.52); }
+    case 4u: { return vec3<f32>(0.78, 0.72, 0.6); }
+    default: { return vec3<f32>(0.64, 0.67, 0.73); }
+  }
+}
+fn fabricRimDyed(m: u32) -> vec3<f32> {
+  switch m {
+    case 1u: { return vec3<f32>(0.3, 0.18, 0.07); }
+    case 2u: { return vec3<f32>(0.5, 0.1, 0.1); }
+    case 3u: { return vec3<f32>(0.45, 0.05, 0.08); }
+    case 4u: { return vec3<f32>(0.5, 0.42, 0.3); }
+    default: { return vec3<f32>(0.2, 0.28, 0.5); }
+  }
+}
+
+// The tartan's sett (material 2): the colour of yarn i, the same sequence in warp and weft. A simplified
+// Royal Stewart: a red ground with green, navy, white and yellow guards (98 yarns per repeat, ~7 cm).
+fn tartanYarn(i: i32) -> vec3<f32> {
+  let p = ((i % 98) + 98) % 98;
+  let red = vec3<f32>(0.55, 0.03, 0.04);
+  let navy = vec3<f32>(0.02, 0.03, 0.14);
+  let green = vec3<f32>(0.02, 0.14, 0.05);
+  let white = vec3<f32>(0.75, 0.72, 0.65);
+  let yellow = vec3<f32>(0.8, 0.6, 0.05);
+  if (p < 22) { return red; }
+  if (p < 26) { return green; }
+  if (p < 30) { return red; }
+  if (p < 32) { return white; }
+  if (p < 36) { return red; }
+  if (p < 44) { return navy; }
+  if (p < 48) { return red; }
+  if (p < 50) { return yellow; }
+  if (p < 54) { return red; }
+  if (p < 62) { return navy; }
+  if (p < 66) { return red; }
+  if (p < 68) { return white; }
+  if (p < 72) { return red; }
+  if (p < 76) { return green; }
+  return red;
+}
+
 // Ring-dyed indigo warp and undyed weft. \`pix\` is the pixel footprint in metres (filters fibre-scale
 // detail to its mean), \`wear\` the abrasion field, \`crown\` the exposure of this point on its yarn,
 // \`loose\` 1 for a yarn freed of the crossing yarns (a thread, a pick across a ladder): no longer
@@ -2007,6 +2207,50 @@ fn yarnLook(L: LayerR, layerIdx: u32, fam: u32, yarn: i32, float_: i32, along: f
   // pitch falls below a few pixels (the twill itself is shaded from the prefiltered weave tile)
   let pitchX = select(L.pitch.y, L.pitch.x, fam == 1u);
   let rYarn = resolved(pitchX, pix);
+  if (L.refine.w == 2u) {
+    // Worsted wool tartan: every yarn one colour of the sett, dulled and heathered by its hair; the hair
+    // over the grooves between yarns greys the colour a little
+    let base = tartanYarn(yarn);
+    let heather = 1.0 + (0.24 * hash2f(seedY, 3u) - 0.12) * rYarn;
+    let fib = mix(1.0, 0.8 + 0.4 * fiberRnd, fiberVis);
+    let grey = vec3<f32>(0.35, 0.32, 0.3);
+    var alb = mix(base, (base + grey) * 0.5, 0.3 * (1.0 - crown)) * heather * fib * (0.85 + 0.15 * crown);
+    alb = mix(alb, mix(alb, vec3<f32>(0.7, 0.65, 0.6), 0.35), 0.45 * loose + 0.3 * wear);
+    o.albedo = alb;
+    o.fuzz = 0.7 + 0.2 * wear + 0.2 * loose;
+    o.ao = 1.0;
+    return o;
+  }
+  if (L.refine.w == 3u) {
+    // Silk satin: filament yarns with no hair in long floats; the crown of every float throws a sheen
+    // and the warp face is brighter than the weft showing through between floats
+    let base = select(vec3<f32>(0.36, 0.015, 0.03), vec3<f32>(0.5, 0.02, 0.045), fam == 1u);
+    let sheen = pow(crown, 6.0);
+    let v = 1.0 + (0.08 * hash2f(seedY, 3u) - 0.04) * rYarn;
+    var alb = (base * (0.7 + 0.5 * crown) + vec3<f32>(0.95, 0.55, 0.55) * 0.55 * sheen) * v;
+    alb = mix(alb, vec3<f32>(0.72, 0.26, 0.3), 0.3 * loose + 0.25 * wear);
+    o.albedo = clamp(alb, vec3<f32>(0.0), vec3<f32>(1.0));
+    o.fuzz = 0.04 + 0.2 * wear + 0.15 * loose;
+    o.ao = 1.0;
+    return o;
+  }
+  if (L.refine.w == 4u) {
+    // Linen canvas: undyed flax, a warm ecru with slubs and nubs along each yarn, a little darker in the
+    // grooves and paler where it is worn or has come loose
+    let shade = 1.0 + (0.3 * hash2f(seedY, 3u) - 0.15) * rYarn;
+    let slub = (0.6 * noise1(seedY + 11u, along / 0.004) + 0.4 * noise1(seedY + 23u, along / 0.015)) * sqrt(rYarn);
+    let streak = noise1(seedY + 41u, along / 0.5e-3) * resolved(0.5e-3, pix);
+    let fib = mix(1.0, 0.8 + 0.4 * fiberRnd, fiberVis);
+    let ecru = vec3<f32>(0.62, 0.54, 0.4);
+    let dark = vec3<f32>(0.36, 0.29, 0.19);
+    let pale = vec3<f32>(0.78, 0.72, 0.6);
+    var alb = mix(ecru, dark, clamp(0.25 * (1.0 - crown) + 0.2 * streak, 0.0, 1.0));
+    alb = mix(alb, pale, clamp(0.35 * slub + 0.3 * wear, 0.0, 1.0)) * shade * fib;
+    o.albedo = mix(alb, pale, 0.3 * loose);
+    o.fuzz = 0.3 + 0.25 * wear + 0.3 * loose;
+    o.ao = 1.0;
+    return o;
+  }
   if (L.refine.w == 1u) {
     // Jute (burlap): undyed single bast yarns, uneven along their length (slubs a few mm to cm long),
     // each its own shade of tan, with dark lignin-stained fibre streaks in the twist grooves and pale,
@@ -2761,8 +3005,8 @@ fn rimFibres(rest: vec2<f32>, dir: vec2<f32>, layer: u32, pix: f32, mat: u32) ->
   let blue = 0.5 + 0.5 * noise2(5011u + layer, rest / 1.6e-3);
   // undyed weft and the pale cores of untwisted warp, with some fibre that keeps its indigo
   // (jute: pale loosened fibre and the darker stained fibre in place of indigo)
-  let pale = select(vec3<f32>(0.64, 0.67, 0.73), vec3<f32>(0.62, 0.46, 0.24), mat == 1u);
-  let dyed = select(vec3<f32>(0.2, 0.28, 0.5), vec3<f32>(0.3, 0.18, 0.07), mat == 1u);
+  let pale = fabricRimPale(mat);
+  let dyed = fabricRimDyed(mat);
   let alb = mix(pale, dyed, 0.3 * blue) * (0.86 + 0.26 * (0.6 * streak + 0.4 * tuft) * fine);
   let cover = clamp(0.8 + 0.2 * clump + 0.3 * (0.65 * streak + 0.35 * tuft) * fine, 0.0, 1.0);
   return vec4<f32>(alb, cover);
@@ -2842,9 +3086,8 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
   let rot = hashf(rotSeed) * 6.2831853;
   let hTop = LR.warp.z + 0.5 * LR.warp.y;
   // family-mean albedos for the softly blended second yarn
-  let jute = LR.refine.w == 1u;
-  let warpMean = select(vec3<f32>(0.045, 0.065, 0.135), vec3<f32>(0.42, 0.26, 0.11), jute);
-  let weftMean = select(vec3<f32>(0.26, 0.27, 0.28), vec3<f32>(0.39, 0.24, 0.1), jute);
+  let warpMean = fabricWarpMean(LR.refine.w);
+  let weftMean = fabricWeftMean(LR.refine.w);
   // per sample: woven geometry and appearance; lighting once per pixel on the averaged inputs
   // (Lambert is linear in the normal; the weak specular lobe is the only approximation)
   var albDirect = vec3<f32>(0.0);
@@ -4861,12 +5104,43 @@ const JUTE_DARK_FIBRE: vec3<f32> = vec3<f32>(0.59, 0.38, 0.165);
 
 // the material the sheet is woven from (one layer per scene; LayerR.refine.w is its id)
 fn fabricId() -> u32 { return R.layers[0].refine.w; }
-fn dyedFibre() -> vec3<f32> { return select(DYED_FIBRE, JUTE_DARK_FIBRE, fabricId() == 1u); }
-fn coreFibre() -> vec3<f32> { return select(CORE_FIBRE, JUTE_FIBRE, fabricId() == 1u); }
-fn weftFibre() -> vec3<f32> { return select(WEFT_FIBRE, JUTE_FIBRE, fabricId() == 1u); }
+// single-scattering albedo of fibre whose deep mass reflects R (see DYED_FIBRE)
+fn fibreAlbedo(r: vec3<f32>) -> vec3<f32> {
+  let s = (1.0 - r) / (1.0 + r);
+  return 1.0 - s * s;
+}
+// the fibre of each fabric: its dyed (surface) fibre and its undyed / core fibre (weft alike)
+fn dyedFibre() -> vec3<f32> {
+  switch fabricId() {
+    case 1u: { return JUTE_DARK_FIBRE; }
+    case 2u: { return fibreAlbedo(vec3<f32>(0.55, 0.03, 0.04)); }
+    case 3u: { return fibreAlbedo(vec3<f32>(0.45, 0.02, 0.04)); }
+    case 4u: { return fibreAlbedo(vec3<f32>(0.36, 0.29, 0.19)); }
+    default: { return DYED_FIBRE; }
+  }
+}
+fn coreFibre() -> vec3<f32> {
+  switch fabricId() {
+    case 1u: { return JUTE_FIBRE; }
+    case 2u: { return fibreAlbedo(vec3<f32>(0.7, 0.65, 0.6)); }
+    case 3u: { return fibreAlbedo(vec3<f32>(0.75, 0.35, 0.37)); }
+    case 4u: { return fibreAlbedo(vec3<f32>(0.62, 0.54, 0.4)); }
+    default: { return CORE_FIBRE; }
+  }
+}
+fn weftFibre() -> vec3<f32> {
+  switch fabricId() {
+    case 1u: { return JUTE_FIBRE; }
+    case 2u: { return fibreAlbedo(vec3<f32>(0.7, 0.65, 0.6)); }
+    case 3u: { return fibreAlbedo(vec3<f32>(0.7, 0.3, 0.33)); }
+    case 4u: { return fibreAlbedo(vec3<f32>(0.62, 0.54, 0.4)); }
+    default: { return WEFT_FIBRE; }
+  }
+}
 // the compact end of a broken warp: its dyed surface, paling as it untwists toward the fans (t)
 fn yarnEndSurface(t: f32) -> vec3<f32> {
-  return select(mix(vec3<f32>(0.054, 0.078, 0.16), mix(DYED_FIBRE, CORE_FIBRE, 0.5), t * t), mix(JUTE_DARK_FIBRE, JUTE_FIBRE, 0.5 + 0.5 * t * t), fabricId() == 1u);
+  let denim = mix(vec3<f32>(0.054, 0.078, 0.16), mix(DYED_FIBRE, CORE_FIBRE, 0.5), t * t);
+  return select(denim, mix(dyedFibre(), coreFibre(), 0.5 + 0.5 * t * t), fabricId() != 0u);
 }
 
 struct VOut {
@@ -11997,6 +12271,84 @@ const FABRICS = {
     seed: 2002,
     perturbation: 0.003,
   },
+  tartan: {
+    material: tartan,
+    bundle: [5, 5],
+    sizeU: 0.62,
+    sizeV: 0.4,
+    z: 0,
+    angle: 0.06,
+    compressU: 0.02,
+    compressV: -0.002,
+    shear: 0.05,
+    collarRows: 2,
+    wear: {
+      center: [0.01, -0.006],
+      axis: [1, -1.15],
+      radii: [0.2, 0.14],
+      amount: 0.3,
+      cellSize: 0.075,
+      featureScale: 0.05,
+      defectThreshold: 0.95,
+      defectDensity: 0.1,
+      sparseFrom: 0.7,
+    },
+    wearStrengthLoss: [0.2, 0.3],
+    seed: 3003,
+    perturbation: 0.003,
+  },
+  satin: {
+    material: satin,
+    bundle: [8, 7],
+    sizeU: 0.62,
+    sizeV: 0.4,
+    z: 0,
+    angle: 0.06,
+    compressU: 0.02,
+    compressV: -0.002,
+    shear: 0.05,
+    collarRows: 2,
+    wear: {
+      center: [0.01, -0.006],
+      axis: [1, -1.15],
+      radii: [0.2, 0.14],
+      amount: 0.25,
+      cellSize: 0.075,
+      featureScale: 0.05,
+      defectThreshold: 0.96,
+      defectDensity: 0.05,
+      sparseFrom: 0.75,
+    },
+    wearStrengthLoss: [0.15, 0.25],
+    seed: 4004,
+    perturbation: 0.0025,
+  },
+  linen: {
+    material: linen,
+    bundle: [6, 6],
+    sizeU: 0.62,
+    sizeV: 0.4,
+    z: 0,
+    angle: 0.06,
+    compressU: 0.022,
+    compressV: -0.002,
+    shear: 0.05,
+    collarRows: 2,
+    wear: {
+      center: [0.01, -0.006],
+      axis: [1, -1.15],
+      radii: [0.2, 0.14],
+      amount: 0.35,
+      cellSize: 0.075,
+      featureScale: 0.05,
+      defectThreshold: 0.95,
+      defectDensity: 0.1,
+      sparseFrom: 0.7,
+    },
+    wearStrengthLoss: [0.25, 0.35],
+    seed: 5005,
+    perturbation: 0.003,
+  },
 };
 function Zt(e = `denim`) {
   return [FABRICS[e] ?? FABRICS.denim];
@@ -14104,6 +14456,13 @@ const Q = Dt.h,
     pickToken = 0;
     // the fabric preset (FABRICS) this worker was started with; switching restarts the worker
     fabric = `denim`;
+    canvas = null;
+    canvasFormat = `bgra8unorm`;
+    frameTexture = null;
+    // a frame capture (share card) was asked for: taken with the next frame
+    captureWanted = !1;
+    capturePending = null;
+    statsDirty = !1;
     // settle substeps when no drape file matches (dev: ?settle=N on the page shortens it)
     settleSteps = 420;
     // pointer tool: `hand` grips and pulls, `blade` cuts along the pointer's path
@@ -14126,7 +14485,7 @@ const Q = Dt.h,
     frameCount = 0;
     substepsDone = 0;
     async init(t, r, i, a, o) {
-      X({ type: `status`, state: `loading` });
+      ((this.canvas = t), X({ type: `status`, state: `loading` }));
       // the settled rest state of this fabric (see dev op `drape`; a stale or missing file just settles here)
       let s = fetch(new URL(this.fabric === `denim` ? `/drape.bin` : `/drape-${this.fabric}.bin`, self.location.href))
           .then((e) => (e.ok ? e.arrayBuffer() : null))
@@ -14148,7 +14507,13 @@ const Q = Dt.h,
       if (!u) throw new e(`Could not create a WebGPU canvas context.`);
       this.context = u;
       let d = navigator.gpu.getPreferredCanvasFormat();
-      (u.configure({ device: this.device, format: d, alphaMode: `opaque` }),
+      (u.configure({
+        device: this.device,
+        format: d,
+        alphaMode: `opaque`,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+      }),
+        (this.canvasFormat = d),
         (this.width = r),
         (this.height = i),
         (this.cssWidth = a),
@@ -14578,7 +14943,8 @@ const Q = Dt.h,
               this.restFor = 0;
               return;
             }
-            ((this.restFor = r < 0.003 ? this.restFor + n : 0), this.restFor >= 0.4 && (this.asleep = !0));
+            ((this.restFor = r < 0.003 ? this.restFor + n : 0),
+              this.restFor >= 0.4 && ((this.asleep = !0), this.statsDirty && this.sendStats()));
           },
           () => (this.probeBusy = !1),
         ));
@@ -14614,13 +14980,16 @@ const Q = Dt.h,
           t = A(this.stage ? this.stage.camera : this.camera, this.width / this.height).viewProj;
         i.end().then((n) => n && this.sendAcoustics(n.raw, n.count, e, t));
       }
-      (r > 0 && this.probeRest(r), (this.substepsDone += r));
+      (r > 0 && (this.probeRest(r), (this.statsDirty = !0)), (this.substepsDone += r));
       let o = this.device.createCommandEncoder({ label: `frame` }),
         s = this.stage ? this.stage.frame() : this.camera;
       if (
         (this.stage || this.reacquireSignal(e),
-        this.renderer.encode(o, s, e / 1e3, this.context.getCurrentTexture().createView()),
+        (this.frameTexture = this.context.getCurrentTexture()),
+        this.renderer.encode(o, s, e / 1e3, this.frameTexture.createView()),
+        this.captureWanted && this.encodeCapture(o, this.frameTexture),
         this.device.queue.submit([o.finish()]),
+        this.captureIfRequested(),
         this.stage?.done && this.endExperience(!0, e),
         (this.inFlight = !0),
         this.device.queue.onSubmittedWorkDone().then(() => (this.inFlight = !1)),
@@ -14628,22 +14997,75 @@ const Q = Dt.h,
         e - this.statsTime > 1e3)
       ) {
         let t = (e - this.statsTime) / 1e3;
-        (X({
-          type: `stats`,
-          stats: {
-            frameMs: (t * 1e3) / Math.max(1, this.frameCount),
-            substepsPerFrame: this.substepsDone / Math.max(1, this.frameCount),
-            simWallRatio: (this.substepsDone * Q) / t,
-            gpuMsPerSubstep: 0,
-            gpuRenderMs: 0,
-            brokenSegments: 0,
-            asleep: this.asleep,
-          },
+        (this.sendStats({
+          frameMs: (t * 1e3) / Math.max(1, this.frameCount),
+          substepsPerFrame: this.substepsDone / Math.max(1, this.frameCount),
+          simWallRatio: (this.substepsDone * Q) / t,
         }),
           (this.frameCount = 0),
           (this.substepsDone = 0),
           (this.statsTime = e));
       }
+    }
+    // stats to the page, with the solver's damage counters (yarns ruptured, yarns pulled out of the weave)
+    sendStats(e = {}) {
+      this.statsDirty = !1;
+      u(this.device, this.solver.counters, 8).then(
+        (t) => {
+          let n = new Uint32Array(t);
+          X({ type: `stats`, stats: { ...e, ruptures: n[0], pulledOut: n[1], asleep: this.asleep } });
+        },
+        () => {},
+      );
+    }
+    // The frame as a PNG, for the share card: the canvas texture is copied to a buffer in the frame's
+    // own command buffer (it is only valid until the frame is presented), read back, and encoded by a
+    // 2D canvas (a WebGPU canvas cannot be read directly).
+    encodeCapture(e, t) {
+      let n = t.width,
+        r = t.height,
+        i = Math.ceil((4 * n) / 256) * 256,
+        a = this.device.createBuffer({
+          label: `capture`,
+          size: i * r,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+      (e.copyTextureToBuffer({ texture: t }, { buffer: a, bytesPerRow: i, rowsPerImage: r }, [n, r, 1]),
+        (this.capturePending = { buffer: a, bytesPerRow: i, width: n, height: r }));
+    }
+    captureIfRequested() {
+      let e = this.capturePending;
+      if (!e) return;
+      ((this.capturePending = null), (this.captureWanted = !1));
+      let t = this.canvasFormat === `bgra8unorm`;
+      e.buffer
+        .mapAsync(GPUMapMode.READ)
+        .then(() => {
+          let n = new Uint8Array(e.buffer.getMappedRange()),
+            r = new Uint8ClampedArray(4 * e.width * e.height);
+          for (let t = 0; t < e.height; t++)
+            r.set(n.subarray(t * e.bytesPerRow, t * e.bytesPerRow + 4 * e.width), 4 * t * e.width);
+          if (t) for (let e = 0; e < r.length; e += 4) ((n = r[e]), (r[e] = r[e + 2]), (r[e + 2] = n));
+          for (let e = 3; e < r.length; e += 4) r[e] = 255;
+          (e.buffer.unmap(), e.buffer.destroy());
+          let i = new OffscreenCanvas(e.width, e.height);
+          return (
+            i.getContext(`2d`).putImageData(new ImageData(r, e.width, e.height), 0, 0),
+            i.convertToBlob({ type: `image/png` })
+          );
+        })
+        .then(
+          (e) => X({ type: `capture`, blob: e }),
+          (t) => {
+            (console.warn(`capture failed:`, t?.name, t?.message), X({ type: `capture`, blob: null }));
+            try {
+              e.buffer.destroy();
+            } catch {}
+          },
+        );
+    }
+    capture() {
+      ((this.captureWanted = !0), (this.dirty = !0));
     }
     setVisible(e) {
       ((this.visible = e), e || (this.releaseAll(), (this.simBacklog = 0)), (this.dirty = !0));
@@ -14726,6 +15148,9 @@ In.onmessage = (t) => {
       break;
     case `tool`:
       $.setTool(n.tool);
+      break;
+    case `capture`:
+      $.capture();
       break;
     case `experience`:
       $.experience(n.name);
