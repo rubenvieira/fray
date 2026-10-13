@@ -14988,6 +14988,9 @@ var ClipRecorder = class {
   frame(e, t) {
     let n = this.encoder;
     if (!n || !e || n.state !== `configured`) return;
+    // The first frame starts the clip's clock. A requestAnimationFrame time can predate start(),
+    // and a negative timestamp makes the muxer reject the key frame that carries the decoder config.
+    this.frames === 0 && (this.t0 = t);
     let r = t - this.t0;
     if (r - this.last < 1e3 / RECORD_FPS - 0.5 || n.encodeQueueSize > 3) return;
     if (r > 1e3 * RECORD_MAX_S) return;
