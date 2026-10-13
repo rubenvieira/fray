@@ -91,9 +91,9 @@ function a(e, t) {
   }
   return { pcm: S, starts: v, level: x };
 }
-var o = `/fabric_tear_sound_sample.mp3`,
-  s = `/exprerience_sounds/creepy_laugh.mp3`,
-  c = `/exprerience_sounds/ambiant.mp3`,
+var o = `${import.meta.env.BASE_URL}fabric_tear_sound_sample.mp3`,
+  s = `${import.meta.env.BASE_URL}exprerience_sounds/creepy_laugh.mp3`,
+  c = `${import.meta.env.BASE_URL}exprerience_sounds/ambiant.mp3`,
   l = 0.015,
   u = class {
     context = null;
