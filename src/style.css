@@ -2572,3 +2572,29 @@ body.framing .stage:active {
     min-height: 44px;
   }
 }
+
+/* Play chrome: the shared header (rubenv.net/play-chrome). Fray's panels,
+   dock and dialogs take the shared dark glass and face; the rust thread
+   colour stays as the accent. */
+:root {
+  --panel: var(--pc-panel-solid);
+  --paper: var(--pc-ink);
+  --paper-dim: var(--pc-muted);
+  --muted: var(--pc-soft);
+  --line: var(--pc-line);
+  --label: var(--pc-font);
+  --sans: var(--pc-font);
+  --display: var(--pc-font);
+}
+.pc-bar .collection-count { position: absolute; top: 3px; right: 2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 99px; background: var(--pc-accent); color: var(--pc-on-accent); font: 700 9px/15px var(--pc-font); text-align: center; }
+.pc-bar .collection-toggle { position: relative; }
+.pc-bar .collection-count:empty, .pc-bar .collection-count[data-count="0"] { display: none; }
+.score { top: calc(var(--top) + 64px) !important; padding: 12px 14px; border-radius: 14px; background: var(--pc-panel); border: 1px solid var(--pc-line); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.fabric-picker { top: calc(var(--top) + 64px) !important; }
+.dock, .frame-bar, .fabric-picker .menu, .camera-controls, .experiment-active { background: var(--pc-panel) !important; border-color: var(--pc-line) !important; border-radius: 16px; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: var(--pc-shadow); }
+.status { top: calc(76px + env(safe-area-inset-top, 0px)); font-family: var(--pc-font); }
+body.pc-hidden .workbench, body.pc-hidden .camera-controls, body.pc-hidden .frame-toggle { opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+@media (max-width: 700px) {
+  .score, .fabric-picker { top: calc(var(--top) + 52px) !important; }
+}
+.toolitem[aria-pressed="true"] { background: var(--pc-accent) !important; color: var(--pc-on-accent) !important; }

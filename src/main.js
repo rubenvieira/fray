@@ -1,3 +1,4 @@
+import "./play-chrome-mount.js";
 import { ArrayBufferTarget, Muxer } from "mp4-muxer";
 import { bindStageGestures } from "./gestures.js";
 import { createCollection } from "./collection.js";
@@ -348,7 +349,7 @@ function syncInteractivity() {
     el.inert = !engineReady || !!activeDialog;
   document.querySelector(`.workbench`).inert ||= framing;
   document.querySelector(`.fabric-picker`).inert ||= framing;
-  for (const el of document.querySelectorAll(`.site-header, .score, .error-panel`)) el.inert = !!activeDialog;
+  for (const el of document.querySelectorAll(`.pc-bar, .score, .error-panel`)) el.inert = !!activeDialog;
   for (const button of document.querySelectorAll(`.experiment-card`)) button.disabled = !engineReady || !!rec;
   document.querySelector(`.frame-toggle`).disabled =
     !engineReady || !!rec || pausePending || document.body.classList.contains(`staged`);
@@ -1582,7 +1583,7 @@ document.addEventListener(
 const soundToggle = document.querySelector(`.sound-toggle`);
 function setMuted(muted) {
   w.setMuted(muted);
-  soundToggle.setAttribute(`aria-pressed`, String(muted));
+  soundToggle.setAttribute(`aria-pressed`, String(!muted));
   soundToggle.setAttribute(`aria-label`, muted ? `Unmute sound` : `Mute sound`);
   soundToggle.title = muted ? `Unmute sound` : `Mute sound`;
   const label = soundToggle.querySelector(`.sound-label`);
@@ -1592,9 +1593,10 @@ function setMuted(muted) {
   } catch {}
 }
 try {
-  setMuted(localStorage.getItem(`fray-muted`) === `true`);
+  // Sound starts off on Play until someone turns it on.
+  setMuted(localStorage.getItem(`fray-muted`) !== `false`);
 } catch {
-  setMuted(false);
+  setMuted(true);
 }
 soundToggle.addEventListener(`click`, () => {
   setMuted(!w.muted);
