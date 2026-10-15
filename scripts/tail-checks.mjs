@@ -1,0 +1,217 @@
+// Actual production rod/history dispatches on WebGPU, isolated from the scene.
+export async function checkTails({ code, responseCode, coloursCode, memoryBytes }) {
+  const adapter = await navigator.gpu.requestAdapter();
+  const device = await adapter.requestDevice({ requiredLimits: { maxStorageBuffersPerShaderStage: 10 } });
+  const errors = [];
+  device.addEventListener("uncapturederror", (e) => errors.push(e.error.message));
+  const assert = (ok, message) => {
+    if (!ok) throw Error(message);
+  };
+  const make = (size, uniform = false) =>
+    device.createBuffer({
+      size,
+      usage:
+        GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC | (uniform ? GPUBufferUsage.UNIFORM : GPUBufferUsage.STORAGE),
+    });
+  const buffers = [
+    make(464, true),
+    make(16),
+    make(32),
+    make(16),
+    make(320),
+    make(544),
+    make(16),
+    make(16),
+    make(16),
+    make(32),
+    make(memoryBytes),
+    make(160, true),
+    make(512, true),
+  ];
+  async function pipeline(label, code, entryPoint) {
+    const m = device.createShaderModule({ code, label });
+    const info = await m.getCompilationInfo();
+    assert(
+      !info.messages.some((x) => x.type === "error"),
+      `${label}: ${info.messages.map((m) => m.message).join("\n")}`,
+    );
+    return device.createComputePipelineAsync({ layout: "auto", compute: { module: m, entryPoint } });
+  }
+  const pipe = await pipeline("production free rods", code, "threadTail");
+  const group = device.createBindGroup({
+    layout: pipe.getBindGroupLayout(0),
+    entries: buffers.map((buffer, binding) => ({ binding, resource: { buffer } })),
+  });
+  async function read(buffer, bytes = buffer.size) {
+    const rb = device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const e = device.createCommandEncoder();
+    e.copyBufferToBuffer(buffer, 0, rb, 0, bytes);
+    device.queue.submit([e.finish()]);
+    await rb.mapAsync(GPUMapMode.READ);
+    const result = new Uint8Array(rb.getMappedRange()).slice();
+    rb.unmap();
+    rb.destroy();
+    return result;
+  }
+  const render = new ArrayBuffer(464),
+    ru = new Uint32Array(render),
+    rf = new Float32Array(render);
+  ru.set([1, 1, 0, 0]);
+  ru.set([0, 1, 1, 257], 4);
+  rf.set([0.001, 0.001, 1, 0], 8);
+  rf.set([0.00015, 0.00015, 500, 500], 36);
+  const hash = (x) => {
+    let v = x >>> 0;
+    v ^= v >>> 16;
+    v = Math.imul(v, 0x7feb352d);
+    v ^= v >>> 15;
+    v = Math.imul(v, 0x846ca68b);
+    v ^= v >>> 16;
+    return v >>> 0;
+  };
+  const slotFor = (yarn) => hash(((yarn << 5) | 1) ^ hash(39)) & 16383;
+  let collidingYarn = -1;
+  for (let yarn = 0; yarn < 65536; yarn++)
+    if (yarn !== 10 && slotFor(yarn) === slotFor(10)) {
+      collidingYarn = yarn;
+      break;
+    }
+  assert(collidingYarn >= 0, "fixture contains a real cache-bucket collision");
+  // Same two yarns can change append order while retaining their own history.
+  const rods = [
+    { yarn: 10, q: [0, 0, 0], len: 0.03 },
+    { yarn: collidingYarn, label: 23, q: [0.09, 0, 0.02], len: 0.022 },
+  ];
+  let time = 0,
+    frame = 0;
+  const states = [];
+  async function step({ dt = 1 / 30, reverse = false, wind = 0, material = 2 } = {}) {
+    time += dt;
+    const ordered = reverse ? [...rods].reverse() : rods;
+    const records = new Uint32Array(8),
+      geo = new Float32Array(80);
+    ordered.forEach((r, i) => {
+      records.set([128, (40 << 16) | r.yarn, 30, 0], 4 * i);
+      geo.set([0, 39, -1, r.len], 40 * i);
+      geo.set([...r.q, 0], 40 * i + 28);
+      geo.set([1, 0, 0, 0], 40 * i + 32);
+    });
+    ru[27] = material;
+    device.queue.writeBuffer(buffers[0], 0, render);
+    device.queue.writeBuffer(buffers[2], 0, records);
+    device.queue.writeBuffer(buffers[3], 0, new Uint32Array([2, 0, 0, 0]));
+    device.queue.writeBuffer(buffers[4], 0, geo);
+    const f = new Float32Array(128);
+    f.set([1, time, 1, frame++], 52);
+    device.queue.writeBuffer(buffers[12], 0, f);
+    const w = new Float32Array(40);
+    w.set([0, 1, 0, wind, time, 0.25, 0.09, 8]);
+    device.queue.writeBuffer(buffers[11], 0, w);
+    const encoder = device.createCommandEncoder();
+    encoder.clearBuffer(buffers[6]);
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipe);
+    pass.setBindGroup(0, group);
+    pass.dispatchWorkgroups(1);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    const geometry = new Float32Array((await read(buffers[4])).buffer);
+    const points = new Float32Array((await read(buffers[5])).buffer);
+    const byYarn = {};
+    ordered.forEach((rod, i) => {
+      const slot = geometry[40 * i + 2];
+      assert(slot >= 0, "tail slot exists");
+      const p = points.slice(slot * 68, slot * 68 + 68);
+      byYarn[rod.label ?? rod.yarn] = Array.from(p);
+      assert(p.every(Number.isFinite), "finite rod points");
+      assert(
+        rod.q.every((q, k) => Math.abs(p[k] - q) < 1e-7),
+        "exactly attached root",
+      );
+      for (let j = 1; j <= 16; j++) {
+        const length = Math.hypot(...[0, 1, 2].map((k) => p[4 * j + k] - p[4 * (j - 1) + k]));
+        assert(Math.abs(length - rod.len / 16) < 2e-7, "free rods conserve segment length");
+      }
+    });
+    assert(errors.length === 0, errors.join("\n"));
+    return byYarn;
+  }
+  try {
+    const born = await step({ dt: 0 });
+    assert(Math.abs(born[10][16 * 4 + 2]) < 1e-8, "a newly freed yarn starts along its exit");
+    for (let i = 0; i < 90; i++) states.push(await step({ reverse: i % 2 === 0 }));
+    const calm = states.at(-1);
+    assert(
+      calm[10][66] < -0.001,
+      "gravity bends the tail: " +
+        JSON.stringify({
+          tip: calm[10].slice(64, 67),
+          first: states[0][10].slice(64, 67),
+          mid: states[44][10].slice(64, 67),
+        }),
+    );
+    const frozen = await step({ dt: 0, reverse: true });
+    assert(JSON.stringify(calm) === JSON.stringify(frozen), "pause/camera frames cannot advance tail physics");
+    for (let i = 0; i < 60; i++) states.push(await step({ wind: 8, reverse: i % 2 === 0 }));
+    const blown = states.at(-1);
+    assert(blown[10][65] > calm[10][65] + 0.003, "actual shared airflow deflects free yarns");
+    for (let i = 0; i < 90; i++) states.push(await step());
+    const released = states.at(-1);
+    assert(
+      Math.abs(released[10][65] - calm[10][65]) < Math.abs(blown[10][65] - calm[10][65]),
+      "wind release returns toward rest",
+    );
+    // Reset clears the complete cache; the same yarn id starts cleanly again.
+    const clear = device.createCommandEncoder();
+    clear.clearBuffer(buffers[10]);
+    device.queue.submit([clear.finish()]);
+    const reset = await step({ dt: 0 });
+    assert(JSON.stringify(reset) === JSON.stringify(born), "reset cannot inherit a previous torn sheet's motion");
+    // Compile and execute scalar bounds against the exact production helpers.
+    const helpers = await pipeline("bending and bridge invariants", responseCode, "check");
+    const output = make(64 * 16);
+    const bg = device.createBindGroup({
+      layout: helpers.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: output } }],
+    });
+    const e = device.createCommandEncoder(),
+      pass = e.beginComputePass();
+    pass.setPipeline(helpers);
+    pass.setBindGroup(0, bg);
+    pass.dispatchWorkgroups(1);
+    pass.end();
+    device.queue.submit([e.finish()]);
+    const values = new Float32Array((await read(output)).buffer);
+    for (let i = 0; i < 12; i++) {
+      const [energyRatio, positionError, velocityError, arcRatio] = values.slice(4 * i, 4 * i + 4);
+      assert(energyRatio <= 1.00001 && energyRatio >= 0, "damped modes cannot gain energy");
+      // WGSL sin/cos need only bounded approximation accuracy. Separate metre
+      // and metre/second errors; do not add quantities with different units.
+      assert(
+        positionError < 2e-5 && velocityError < 2e-3,
+        "GPU bending mode timestep split case " + i + ": " + JSON.stringify({ positionError, velocityError }),
+      );
+      const expectedEnd = (i & 1) === 0 && ((i & 4) === 0 || (i & 2) !== 0);
+      assert(
+        values[4 * (16 + i)] === Number(expectedEnd),
+        "only actually severed yarns receive end tufts; continuing bridges do not",
+      );
+      assert(arcRatio <= 1.00001 && arcRatio > 0.995, "a slack bridge spends its existing yarn length");
+    }
+    output.destroy();
+    assert(errors.length === 0, errors.join("\n"));
+    return {
+      cases: 12,
+      bucketCollision: [10, collidingYarn],
+      frames: frame,
+      rods: 2,
+      errors,
+      calmTip: calm[10].slice(64, 67),
+      airTip: blown[10].slice(64, 67),
+      releasedTip: released[10].slice(64, 67),
+    };
+  } finally {
+    buffers.forEach((b) => b.destroy());
+    device.destroy();
+  }
+}

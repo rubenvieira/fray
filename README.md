@@ -12,6 +12,11 @@ use the same yarns, masses, damage and contact solver; changing setup starts a f
 
 Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a fresh sheet.
 
+Broken edges keep their yarn colours, including individual tartan stripes. Wool makes a crimped
+brush, jute keeps coarser ends, and silk/nylon shed finer filaments. A yarn that continues across an
+opening does not grow a second broken-end tuft at its root. Loose ends now lag, sway in Air/wind
+and settle; threads held at both ends can sag without acquiring extra length.
+
 - **Explore** opens three ready-to-play studies: **Ribbons in motion** (satin, knife, breeze, slow
   motion), **Storm study** (gauze, claw, gale), and **Golden hour** (lamé, hand, breeze, slow motion).
   Each starts a fresh sheet and clears the current photo print. The guidance is a starting point;
@@ -88,8 +93,12 @@ npm test           # input, interaction, hand-motion, haptic and audio behavior 
 npm run test:gpu   # optional WebGPU checks: yarn mechanics, fibre colour and airflow; requires Playwright
 ```
 
-The GPU checks compile the production grip, yarn-damage, loose-thread, mount, floor and airflow shaders and run force,
-fibre-colour and aerodynamic cases on SwiftShader. Airflow cases cover two-sided and edge-on cloth,
+The GPU checks compile the production grip, yarn-damage, loose-thread, fringe, tail preparation,
+mount, floor and airflow shaders and run force, fibre-colour and aerodynamic cases on SwiftShader.
+Persistent-rod checks exercise colliding cache buckets, reordered runs, gravity, shared airflow,
+release, fixed roots, segment lengths, pause/reset, energy decay and slack-bridge arc length.
+Fringe cases preserve source yarn dyes and reject broken-end tufts on continuing yarns.
+Airflow cases cover two-sided and edge-on cloth,
 porosity, partial tears, free strands, pinned/retired nodes, overlapping fans, oblique aiming at raised
 and hanging folds, outward fans on vertical cloth, and cloth moving with or against the air.
 Grip-load cases verify the actual GPU spring resultant, force clamp, released patches and translation
@@ -109,6 +118,9 @@ src/gestures.js            pointer routing: cloth manipulation, frame orbit, two
 src/hand.js                acceleration-limited grip motion with discrete braking
 src/mount.js               stretched/hanging boundary conditions, initial pleat, tool frames, camera and rail
 src/grip-feedback.js       measured hand-load and confirmed tear cues
+src/fray-material.js       material-specific fringe, filament and rod reconstruction fits
+src/tail-memory.js         bounded persistent free-tail identity and damped bending modes (WGSL)
+src/airflow.js             one shared physical airflow field for cloth and reconstructed yarns
 src/audio-preparation.js   tear-recording worker lifecycle and transferable channel copies
 src/audio-preparation-worker.js / src/tear-source.js  off-thread sample mixing, filtering and normalization
 src/tear-feedback.js       brief touch haptics driven by confirmed fabric separation
@@ -191,6 +203,18 @@ tests/audio-preparation.test.js  sample-output parity, finite normalization and 
    in either orientation.
    Each fabric ships its settled rest state (`public/drape*.bin`); without one the engine warm-starts from
    the denim's drape and settles briefly.
+
+Free-tail reconstruction retains position and velocity by material yarn and held crossing, rather
+than the temporary GPU run-list order. It solves a material-aware gravity/airflow equilibrium,
+then integrates a damped bending mode and projects segment lengths and existing cloth/floor
+contacts. Newly released ends start along the yarn exit. Physical time governs this motion, so
+slow motion, pause and camera framing remain consistent. Measured tail motion participates in
+the sleep check; Reset clears the approximately 10 MB bounded history cache.
+
+These are local appearance/reconstruction fits, not measured fibre properties. The mechanical
+lattice continues to carry yarn loads and determine rupture/pull-out. Reconstructed tails and
+slack bridges do not add load-bearing particles or feed new forces back into the sheet. The
+cache falls back to an equilibrium rod if its bounded probe cannot reserve a slot.
 
 ### Drape files and the warm start
 

@@ -1102,6 +1102,25 @@ test("failed GPU completion clears backpressure without adding a timing sample",
   assert.equal(f.engine.gpuFrameTime, 0);
 });
 
+test("loose-yarn rendering keeps physical time while paused camera frames use the display clock", async () => {
+  const f = fixture();
+  const clocks = [];
+  f.engine.renderer.encode = (...args) => clocks.push({ display: args[2], physical: args[5] });
+  f.engine.sendStats = () => {};
+  f.engine.simTime = 0.75;
+  f.engine.paused = true;
+  f.engine.dirty = true;
+  f.engine.frame(1017);
+  f.completions[0].resolve();
+  await flush();
+  f.engine.dirty = true;
+  f.engine.frame(3017);
+  assert.deepEqual(clocks, [
+    { display: 1.017, physical: 0.75 },
+    { display: 3.017, physical: 0.75 },
+  ]);
+});
+
 test("stats report the completed interaction mean and reset only the reporting accumulators", async () => {
   const f = fixture();
   const reports = [];
@@ -1165,11 +1184,12 @@ function probeFixture() {
   return {
     ...f,
     maps,
-    async complete(index, ruptures, pulledOut, speed = 0.01, force = 0) {
-      buffer = new ArrayBuffer(208);
+    async complete(index, ruptures, pulledOut, speed = 0.01, force = 0, tailSpeed = 0) {
+      buffer = new ArrayBuffer(224);
       new Uint32Array(buffer).set([ruptures, pulledOut]);
       new Float32Array(buffer)[2] = speed;
       new Float32Array(buffer)[7] = force;
+      new Uint32Array(buffer, 208, 4)[2] = tailSpeed;
       maps[index].resolve();
       await flush();
     },
@@ -1196,6 +1216,19 @@ test("damage probes emit real counter deltas once, including while sound is unav
   assert.equal(f.topologyRequests(), 2);
   assert.equal(f.unmaps(), 3);
   assert.equal(f.engine.probeBusy, false);
+});
+
+test("moving loose ends keep resting cloth awake until their measured motion settles", async () => {
+  const f = probeFixture();
+  f.engine.renderer.tailCount = {};
+  f.engine.asleep = false;
+  f.engine.probeRest(60);
+  await f.complete(0, 10, 0, 0, 0, 20);
+  assert.equal(f.engine.asleep, false, "a still sheet must not freeze a moving free tail");
+  assert.equal(f.engine.restFor, 0);
+  f.engine.probeRest(60);
+  await f.complete(1, 10, 0, 0, 0, 0);
+  assert.equal(f.engine.asleep, true, "settled yarns allow the normal sleep policy");
 });
 
 test("reset invalidates an in-flight damage probe and starts fresh counter deltas", async () => {
