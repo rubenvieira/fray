@@ -1,5 +1,5 @@
 // A bounded cache of reconstructed free rods. Identity is the material yarn and
-// held crossing, never the transient run-list index (GPU appends reorder it).
+// cut end, never the transient run-list index or a retreating held crossing.
 export const TAIL_HISTORY_SLOTS = 16384;
 export const TAIL_HISTORY_BYTES = 592 * TAIL_HISTORY_SLOTS;
 export const tailMemoryWGSL = `
@@ -19,8 +19,8 @@ struct TailMemory {
 @group(0) @binding(12) var<uniform> TF: FrameU;
 
 fn tailIdentity(ri: RunInfo) -> vec2<u32> {
-  let held = bitcast<u32>(i32(select(ri.pos + ri.n, ri.pos - 1.0, ri.heldA)));
-  return vec2<u32>((ri.yarn << 5u) | (ri.layer << 2u) | (ri.fam << 1u) | u32(ri.heldA), held);
+  let cut = bitcast<u32>(i32(select(ri.pos - 1.0, ri.pos + ri.n, ri.heldA)));
+  return vec2<u32>((ri.yarn << 5u) | (ri.layer << 2u) | (ri.fam << 1u) | u32(ri.heldA), cut);
 }
 
 fn tailSlot(id: vec2<u32>, frame: u32) -> i32 {
