@@ -12,10 +12,10 @@ const n = {
     levelTime: 0.06,
     referenceRate: 60,
     maxGain: 2,
-    rateTime: 0.08,
+    rateTime: 0.035,
     tearWindow: 0.1,
-    attack: 0.02,
-    tail: 0.3,
+    attack: 0.006,
+    tail: 0.18,
   },
   r = 0.7,
   i = (e) => ({
@@ -65,9 +65,16 @@ var a = class {
   }
   grip(e, t) {
     let n = this.voices[e];
-    n && ((n.held = t), t || ((n.target = 0), (n.rate = 0), (n.idle = 1 / 0)));
+    // Fractures can arrive after release, or come from tools without a grip.
+    // The measured energy and tear window control the sound's lifetime.
+    n && (n.held = t);
+  }
+  reset() {
+    ((this.voices = Array.from({ length: 4 }, () => i(!1))), (this.env = 0), (this.limGain = 1));
   }
   push(r) {
+    // Damage heard only after the recording loads would be detached from the gesture.
+    if (!this.source) return;
     let i = n,
       a = 0;
     for (let e = 0; e + 13 <= r.length; e += 13) a += r[e];
@@ -75,7 +82,6 @@ var a = class {
     let o = 1 - Math.exp(-a / i.rateTime);
     for (let n = 0; n < 4; n++) {
       let s = this.voices[n];
-      if (!s.held) continue;
       let c = 0,
         l = 0,
         u = NaN;
@@ -84,7 +90,7 @@ var a = class {
         ((c += r[a + e.fracture]), (l += r[a + e.cuts]), r[a + e.fracture] > 0 && (u = r[a + e.pan]));
       }
       ((s.rate += o * (c / a - s.rate)),
-        l > 0 && (s.idle = 0),
+        (c > 0 || l > 0) && (s.idle = 0),
         Number.isNaN(u) ||
           ((s.panTarget = 0.5 * Math.max(-1, Math.min(1, u))), s.panSet || (s.pan = s.panTarget), (s.panSet = !0)),
         (s.target = s.idle < i.tearWindow ? Math.min(i.maxGain, Math.sqrt(Math.max(0, s.rate) / i.referenceRate)) : 0));
@@ -130,7 +136,7 @@ var a = class {
           (t[n] += d * Math.sin(f) * Math.SQRT2),
           ++r.age === c ? (r.pos[1] = this.slice()) : r.age === s && ((r.age = 0), (r.pos[0] = this.slice())));
       }
-      r.target === 0 && r.gain < 1e-4 && ((r.pos[0] = -1), r.held || (r.panSet = !1));
+      r.target === 0 && r.gain < 1e-4 && ((r.pos[0] = -1), (r.rate = 0), r.held || (r.panSet = !1));
     }
     if (!d) return;
     let f = this.env,
@@ -154,6 +160,7 @@ function o(e) {
 }
 var s = class extends AudioWorkletProcessor {
   voice = new a(sampleRate, (Math.random() * 4294967296) >>> 0, !1);
+  records = null;
   constructor() {
     (super(),
       (this.port.onmessage = (e) => {
@@ -161,9 +168,19 @@ var s = class extends AudioWorkletProcessor {
           this.voice.setSource(e.data.source);
           return;
         }
-        e.data.records.onmessage = (e) => {
+        if (this.records) {
+          this.records.onmessage = null;
+          this.records.close();
+        }
+        this.voice.reset();
+        this.records = e.data.records;
+        this.records.onmessage = (e) => {
           let t = e.data;
-          t instanceof Float32Array ? this.voice.push(t) : this.voice.grip(t.grip, t.held);
+          t instanceof Float32Array
+            ? this.voice.push(t)
+            : t.reset
+              ? this.voice.reset()
+              : this.voice.grip(t.grip, t.held);
         };
       }));
   }

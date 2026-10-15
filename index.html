@@ -41,31 +41,88 @@
     <script type="module" src="/src/main.js"></script>
   </head>
   <body class="loading">
-    <div class="loader" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-      <span class="loader-rows loader-track"></span>
-      <span class="loader-rows loader-fill"></span>
-      <span class="loader-needle"></span>
-    </div>
-    <div class="dock">
-      <ul class="experiences" id="experiences" role="menu" aria-label="Experiences" hidden>
-        <li role="none">
-          <button class="experience" type="button" role="menuitem" data-experience="beneath">Smilie</button>
+    <header class="site-header">
+      <div class="brand">
+        <p class="eyebrow">A tactile playground</p>
+        <h1>FRAY<span class="brand-period">.</span></h1>
+        <p class="brand-tagline">A little creative destruction.</p>
+      </div>
+      <div class="header-actions">
+        <nav class="studio-nav" aria-label="Creative studio">
+          <button class="explore-toggle" type="button" aria-haspopup="dialog" title="Explore creative starting points">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6Z" />
+            </svg>
+            <span>Explore</span>
+          </button>
+          <button class="collection-toggle" type="button" aria-haspopup="dialog" title="Open your saved collection">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="7" y="7" width="13" height="14" rx="1.5" />
+              <path d="M16 3H4v14M10 16l3-4 4 5" />
+            </svg>
+            <span>Collection</span><span class="collection-count" aria-hidden="true">0</span>
+          </button>
+        </nav>
+        <div class="utility-nav">
+          <button
+            class="help-toggle"
+            type="button"
+            aria-haspopup="dialog"
+            aria-label="How to play"
+            title="How to play (?)"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9.7 9a2.4 2.4 0 0 1 4.7.7c0 1.5-2.4 1.7-2.4 3.3M12 16.6v.1" />
+            </svg>
+            <span>How to play</span>
+          </button>
+          <button
+            class="sound-toggle"
+            type="button"
+            aria-pressed="false"
+            aria-label="Mute sound"
+            title="Mute sound (M)"
+          >
+            <svg class="sound-on-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M11 4 6 8H3v8h3l5 4V4ZM15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14" />
+            </svg>
+            <svg class="sound-off-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M11 4 6 8H3v8h3l5 4V4ZM16 9l6 6m0-6-6 6" />
+            </svg>
+            <span class="sound-label">Sound on</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="fabric-picker">
+      <button
+        class="menu"
+        type="button"
+        aria-label="Choose fabric: Tartan"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-controls="experiences"
+      >
+        <span class="current-swatch fabric-swatch" data-fabric="tartan" aria-hidden="true"></span>
+        <span class="fabric-selection"
+          ><span class="control-label">Fabric</span><span class="current-fabric">Tartan</span></span
+        >
+        <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
+      </button>
+      <ul class="experiences" id="experiences" role="menu" aria-label="Choose your fabric" hidden>
+        <li class="menu-intro" role="none">
+          <span class="eyebrow">The material library</span>
+          <p>Changing fabric starts a fresh sheet.</p>
         </li>
         <li role="none">
-          <button
-            class="experience"
-            type="button"
-            role="menuitem"
-            data-print="pick"
-            title="Print a photo on the fabric, then rip it. It never leaves your browser."
-          >
-            Print a photo…
+          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="true" data-fabric="tartan">
+            <span class="fabric-swatch" data-fabric="tartan" aria-hidden="true"></span
+            ><span class="option-copy"><strong>Tartan</strong><small>Wool · a classic with give</small></span
+            ><span class="selection-mark" aria-hidden="true">✓</span>
           </button>
         </li>
-        <li role="none" hidden>
-          <button class="experience" type="button" role="menuitem" data-print="clear">Clear print</button>
-        </li>
-        <li role="none" class="experiences-rule" aria-hidden="true"></li>
         <li role="none">
           <button
             class="experience fabric"
@@ -74,22 +131,23 @@
             aria-checked="false"
             data-fabric="burlap"
           >
-            Burlap
+            <span class="fabric-swatch" data-fabric="burlap" aria-hidden="true"></span
+            ><span class="option-copy"><strong>Burlap</strong><small>Coarse, rustic weave</small></span
+            ><span class="selection-mark" aria-hidden="true">✓</span>
           </button>
         </li>
         <li role="none">
           <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="linen">
-            Linen
+            <span class="fabric-swatch" data-fabric="linen" aria-hidden="true"></span
+            ><span class="option-copy"><strong>Linen</strong><small>Crisp, natural threads</small></span
+            ><span class="selection-mark" aria-hidden="true">✓</span>
           </button>
         </li>
         <li role="none">
           <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="satin">
-            Satin
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="true" data-fabric="tartan">
-            Tartan
+            <span class="fabric-swatch" data-fabric="satin" aria-hidden="true"></span
+            ><span class="option-copy"><strong>Satin</strong><small>Smooth, flowing silk</small></span
+            ><span class="selection-mark" aria-hidden="true">✓</span>
           </button>
         </li>
         <li role="none">
@@ -100,17 +158,23 @@
             aria-checked="false"
             data-fabric="chiffon"
           >
-            Chiffon
+            <span class="fabric-swatch" data-fabric="chiffon" aria-hidden="true"></span
+            ><span class="option-copy"><strong>Chiffon</strong><small>Light, delicate silk</small></span
+            ><span class="selection-mark" aria-hidden="true">✓</span>
           </button>
         </li>
         <li role="none">
           <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="gauze">
-            Gauze
+            <span class="fabric-swatch" data-fabric="gauze" aria-hidden="true"></span
+            ><span class="option-copy"><strong>Gauze</strong><small>Airy, open weave</small></span
+            ><span class="selection-mark" aria-hidden="true">✓</span>
           </button>
         </li>
         <li role="none">
           <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="lame">
-            Lamé
+            <span class="fabric-swatch" data-fabric="lame" aria-hidden="true"></span
+            ><span class="option-copy"><strong>Lamé</strong><small>Metallic, fluid shimmer</small></span
+            ><span class="selection-mark" aria-hidden="true">✓</span>
           </button>
         </li>
         <li role="none">
@@ -121,141 +185,508 @@
             aria-checked="false"
             data-fabric="ballistic"
           >
-            Ballistic
+            <span class="fabric-swatch" data-fabric="ballistic" aria-hidden="true"></span
+            ><span class="option-copy"><strong>Ballistic</strong><small>Dense nylon · extra tough</small></span
+            ><span class="selection-mark" aria-hidden="true">✓</span>
+          </button>
+        </li>
+        <li role="none" class="experiences-rule"></li>
+        <li role="none">
+          <button class="experience special-experience" type="button" role="menuitem" data-print="pick">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8" cy="8" r="1.5" />
+              <path d="m3 17 5-5 4 4 4-6 5 7" /></svg
+            ><span class="option-copy"
+              ><strong>Print a photo</strong><small>Your image. Your canvas. Stays private.</small></span
+            >
+          </button>
+        </li>
+        <li role="none" hidden>
+          <button class="experience" type="button" role="menuitem" data-print="clear">Remove photo print</button>
+        </li>
+        <li role="none">
+          <button class="experience special-experience" type="button" role="menuitem" data-experience="beneath">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M8 14a4 4 0 0 0 8 0M8 8v1m8-1v1" /></svg
+            ><span class="option-copy"><strong>Meet Smilie</strong><small>Something is hiding beneath.</small></span>
           </button>
         </li>
       </ul>
+      <div class="camera-controls" role="group" aria-label="Camera controls">
+        <span class="control-label">View</span>
+        <button
+          class="camera-control"
+          type="button"
+          data-camera="left"
+          aria-label="Rotate view left"
+          title="Rotate left (←)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4-4 4 4 4M4 8h9a6 6 0 0 1 0 12h-2" /></svg>
+        </button>
+        <button
+          class="camera-control"
+          type="button"
+          data-camera="right"
+          aria-label="Rotate view right"
+          title="Rotate right (→)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 4 4 4-4 4M20 8h-9a6 6 0 0 0 0 12h2" /></svg>
+        </button>
+        <button class="camera-control" type="button" data-camera="zoom-out" aria-label="Zoom out" title="Zoom out">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
+        </button>
+        <button class="camera-control" type="button" data-camera="zoom-in" aria-label="Zoom in" title="Zoom in">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12M12 6v12" /></svg>
+        </button>
+        <button class="camera-control" type="button" data-camera="reset" aria-label="Reset view" title="Reset view">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+      </div>
       <button
-        class="menu"
+        class="frame-toggle"
         type="button"
-        aria-label="Experiences"
-        title="Experiences"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-controls="experiences"
+        aria-pressed="false"
+        title="Freeze the fabric to compose a shot (Space)"
       >
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path d="M2.8 12s3.4-6 9.2-6 9.2 6 9.2 6-3.4 6-9.2 6-9.2-6-9.2-6z" />
-          <circle cx="12" cy="12" r="2.6" />
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
+          <path d="M10 8v8m4-8v8" />
         </svg>
-      </button>
-      <button class="record" type="button" aria-label="Record a clip" title="Record a clip (V)" aria-pressed="false">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <circle class="record-dot" cx="12" cy="12" r="5.5" />
-          <circle cx="12" cy="12" r="9" />
-        </svg>
-        <span></span>
-      </button>
-      <button class="share" type="button" aria-label="Share" title="Share your damage">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path d="M12 3.5v12" />
-          <path d="m7.8 7.7 4.2-4.2 4.2 4.2" />
-          <path d="M5 13.5v6h14v-6" />
-        </svg>
-        <span>Share</span>
-      </button>
-      <ul class="tools" id="tools" role="menu" aria-label="Tools" hidden>
-        <li role="none">
-          <button class="experience toolitem" type="button" role="menuitemradio" aria-checked="true" data-tool="hand">
-            Hand
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience toolitem" type="button" role="menuitemradio" aria-checked="false" data-tool="blade">
-            Knife
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience toolitem" type="button" role="menuitemradio" aria-checked="false" data-tool="claw">
-            Claw
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience toolitem" type="button" role="menuitemradio" aria-checked="false" data-tool="fist">
-            Fist
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience toolitem" type="button" role="menuitemradio" aria-checked="false" data-tool="pin">
-            Pin
-          </button>
-        </li>
-        <li role="none" class="experiences-rule" aria-hidden="true"></li>
-        <li role="none">
-          <button class="experience fx" type="button" role="menuitem" data-fx="wind">Wind: off</button>
-        </li>
-        <li role="none">
-          <button class="experience fx" type="button" role="menuitemcheckbox" aria-checked="false" data-fx="slow">
-            Slow motion
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience fx" type="button" role="menuitem" data-fx="shake">Shake it</button>
-        </li>
-      </ul>
-      <button
-        class="tool"
-        type="button"
-        aria-label="Tools"
-        title="Tools: hand, knife, claw, fist, pin, wind, slow motion"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-controls="tools"
-        data-tool="hand"
-      >
-        <svg class="i-hand" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path
-            d="M8 11.5V5.2a1.4 1.4 0 0 1 2.8 0V11m0-6.6V3.9a1.4 1.4 0 0 1 2.8 0V11m0-5.8a1.4 1.4 0 0 1 2.8 0V12m0-3.9a1.4 1.4 0 0 1 2.8 0v6.2c0 3.6-2.7 6.2-6.3 6.2-2.6 0-4.3-1.1-5.6-3.1L4.4 13.2a1.5 1.5 0 0 1 2.4-1.8L8 13"
-          />
-        </svg>
-        <svg class="i-blade" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path d="M3 17.2 13.9 6.3l3.1 3.1-6.1 6.1c-1.6 1.6-3.8 2.5-6.1 2.5H3z" />
-          <path d="m13.9 6.3 3.4-3.4 3.1 3.1-3.4 3.4" />
-        </svg>
-        <svg class="i-claw" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path d="M5 4c1 5 2 9 4.5 16M11.5 3.5c.5 5 1 9.5 1.5 16.5M18.5 4c-1 5-2 9-4.5 16" />
-        </svg>
-        <svg class="i-fist" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path
-            d="M6 12V8.5a1.5 1.5 0 0 1 3 0V12m0-4.5V6.5a1.5 1.5 0 0 1 3 0V12m0-5a1.5 1.5 0 0 1 3 0v5m0-3.5a1.5 1.5 0 0 1 3 0V15c0 3.3-2.7 6-6 6h-1.5A5.5 5.5 0 0 1 5 15.5V12"
-          />
-          <path d="M3 3.5 5 5.5M12 2v1" />
-        </svg>
-        <svg class="i-pin" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" />
-          <path d="M12 14v7" />
-        </svg>
-        <span class="tool-name">Hand</span>
-      </button>
-      <button class="reset" type="button" aria-label="Reset the fabric" title="Reset the fabric">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path d="M19.4 13.1a7.5 7.5 0 1 1-2.1-6.4" />
-          <path d="M18.3 3.4v3.9h-3.9" />
-        </svg>
-        <span>Reset</span>
+        <span>Frame a moment</span><kbd>Space</kbd>
       </button>
     </div>
-    <div class="score" aria-hidden="true">
+
+    <aside class="score" aria-label="Your session">
+      <span class="score-verdict">Untouched</span>
       <span class="score-n">0</span>
       <span class="score-l">threads shredded</span>
-      <span class="score-t">0:00</span>
+      <span class="score-time"><span class="score-t">0:00</span><span>elapsed</span></span>
+    </aside>
+
+    <div class="workbench">
+      <div class="experiment-active" hidden>
+        <div class="experiment-active-copy">
+          <span class="experiment-kicker">Your starting point</span><strong class="experiment-name"></strong>
+          <p class="experiment-tip"></p>
+        </div>
+        <button
+          class="experiment-dismiss icon-button"
+          type="button"
+          aria-label="Exit experiment"
+          title="Exit experiment and keep playing"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
+        </button>
+      </div>
+      <div class="interaction-guide" aria-live="polite">
+        <p class="guide-title">Pull at the possibilities.</p>
+        <p class="guide-description" id="tool-instruction">Drag the fabric to stretch and tear it.</p>
+      </div>
+      <p class="effect-summary" hidden></p>
+      <div class="dock">
+        <div class="tool-palette" role="group" aria-label="Fabric tools">
+          <button class="toolitem" type="button" data-tool="hand" aria-pressed="true" title="Hand: pull and tear (1)">
+            <kbd>1</kbd
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M8 11.5V5.2a1.4 1.4 0 0 1 2.8 0V11m0-6.6V3.9a1.4 1.4 0 0 1 2.8 0V11m0-5.8a1.4 1.4 0 0 1 2.8 0V12m0-3.9a1.4 1.4 0 0 1 2.8 0v6.2c0 3.6-2.7 6.2-6.3 6.2-2.6 0-4.3-1.1-5.6-3.1L4.4 13.2a1.5 1.5 0 0 1 2.4-1.8L8 13"
+              /></svg
+            ><span class="tool-name">Hand</span>
+          </button>
+          <button
+            class="toolitem"
+            type="button"
+            data-tool="blade"
+            aria-pressed="false"
+            title="Knife: slice the threads (2)"
+          >
+            <kbd>2</kbd
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M3 17.2 13.9 6.3l3.1 3.1-6.1 6.1c-1.6 1.6-3.8 2.5-6.1 2.5H3zM13.9 6.3l3.4-3.4 3.1 3.1-3.4 3.4"
+              /></svg
+            ><span class="tool-name">Knife</span>
+          </button>
+          <button
+            class="toolitem"
+            type="button"
+            data-tool="claw"
+            aria-pressed="false"
+            title="Claw: rake across the fabric (3)"
+          >
+            <kbd>3</kbd
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4c1 5 2 9 4.5 16M11.5 3.5c.5 5 1 9.5 1.5 16.5M18.5 4c-1 5-2 9-4.5 16" /></svg
+            ><span class="tool-name">Claw</span>
+          </button>
+          <button
+            class="toolitem"
+            type="button"
+            data-tool="fist"
+            aria-pressed="false"
+            title="Fist: punch the fabric (4)"
+          >
+            <kbd>4</kbd
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M6 12V8.5a1.5 1.5 0 0 1 3 0V12m0-4.5V6.5a1.5 1.5 0 0 1 3 0V12m0-5a1.5 1.5 0 0 1 3 0v5m0-3.5a1.5 1.5 0 0 1 3 0V15c0 3.3-2.7 6-6 6h-1.5A5.5 5.5 0 0 1 5 15.5V12M3 3.5 5 5.5M12 2v1"
+              /></svg
+            ><span class="tool-name">Fist</span>
+          </button>
+          <button
+            class="toolitem"
+            type="button"
+            data-tool="pin"
+            aria-pressed="false"
+            title="Pin: anchor or release a point (5)"
+          >
+            <kbd>5</kbd
+            ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3zM12 14v7" /></svg
+            ><span class="tool-name">Pin</span>
+          </button>
+        </div>
+        <div class="dock-actions">
+          <div class="effects-control">
+            <button class="tool" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="tools">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 7h11m4 0h3M3 17h3m4 0h11" />
+                <circle cx="16" cy="7" r="2" />
+                <circle cx="8" cy="17" r="2" /></svg
+              ><span>Effects</span
+              ><svg class="small-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 14 4-4 4 4" /></svg>
+            </button>
+            <ul class="tools" id="tools" role="menu" aria-label="Fabric effects" hidden>
+              <li class="menu-intro" role="none"><span class="eyebrow">A change of pace</span></li>
+              <li role="none">
+                <button class="experience fx" type="button" role="menuitem" data-fx="wind">
+                  <span class="option-copy"
+                    ><strong class="fx-label">Wind: off</strong><small>Cycle through three strengths</small></span
+                  ><kbd>W</kbd>
+                </button>
+              </li>
+              <li role="none">
+                <button class="experience fx" type="button" role="menuitemcheckbox" aria-checked="false" data-fx="slow">
+                  <span class="option-copy"><strong>Slow motion</strong><small>Savor every single thread</small></span
+                  ><kbd>T</kbd><span class="fx-indicator" aria-hidden="true"></span>
+                </button>
+              </li>
+              <li role="none">
+                <button class="experience fx" type="button" role="menuitem" data-fx="shake">
+                  <span class="option-copy"
+                    ><strong>Shake fabric</strong><small>Give everything a little jolt</small></span
+                  ><kbd>X</kbd>
+                </button>
+              </li>
+            </ul>
+          </div>
+          <button class="reset" type="button" title="Start with a fresh sheet (R)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M19.4 13.1a7.5 7.5 0 1 1-2.1-6.4M18.3 3.4v3.9h-3.9" /></svg
+            ><span>Reset</span>
+          </button>
+          <button
+            class="record"
+            type="button"
+            aria-label="Record a clip"
+            title="Record up to 20 seconds (V)"
+            aria-pressed="false"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle class="record-dot" cx="12" cy="12" r="4" />
+              <circle cx="12" cy="12" r="9" /></svg
+            ><span class="record-label">Record</span>
+          </button>
+          <button class="share" type="button" title="Save or share your damage (S)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3.5v12m-4.2-7.8L12 3.5l4.2 4.2M5 13.5v6h14v-6" /></svg
+            ><span>Save / share</span>
+          </button>
+        </div>
+      </div>
+      <p class="record-note" hidden>Recording your canvas · up to 20 seconds</p>
+      <p class="camera-hint">
+        <span class="desktop-hint"
+          >Scroll to zoom<span class="hint-dot">·</span>Right-drag to orbit<span class="hint-dot">·</span>1–5 to switch
+          tools</span
+        ><span class="touch-hint">One finger to tear<span class="hint-dot">·</span>Two to explore</span>
+      </p>
     </div>
-    <div class="sheet" role="dialog" aria-modal="true" aria-label="Share your damage" hidden>
+
+    <div class="frame-bar" hidden>
+      <div class="frame-mode-label"><span class="frame-mode-dot" aria-hidden="true"></span>Frame mode</div>
+      <div class="frame-toolbar">
+        <button class="frame-exit" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m5-5-5 5 5 5" /></svg>Back to play
+        </button>
+        <div class="frame-views" role="group" aria-label="Frame composition">
+          <button class="frame-view" type="button" data-view="front">Front</button>
+          <button class="frame-view" type="button" data-view="angle">Angle</button>
+          <button class="frame-view" type="button" data-view="detail">Detail</button>
+          <button class="frame-view" type="button" data-view="reset" title="Fit fabric in the frame">Fit</button>
+        </div>
+        <button class="frame-capture" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 5 6 8H3v12h18V8h-3l-2-3Z" />
+            <circle cx="12" cy="14" r="3" /></svg
+          >Capture frame
+        </button>
+      </div>
+      <p class="frame-instruction">
+        Fabric paused <span aria-hidden="true">·</span> drag to orbit <span aria-hidden="true">·</span> pinch or scroll
+        to zoom
+      </p>
+    </div>
+
+    <div class="loading-panel">
+      <span class="eyebrow">Thread by thread</span>
+      <h2 class="loading-title">Weaving your playground</h2>
+      <p class="loading-detail">Preparing Tartan…</p>
+      <span class="loading-percent">0%</span>
+    </div>
+    <div
+      class="loader"
+      role="progressbar"
+      aria-label="Preparing fabric"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="0"
+    >
+      <span class="loader-rows loader-track"></span><span class="loader-rows loader-fill"></span
+      ><span class="loader-needle"></span>
+    </div>
+    <div class="error-panel" role="alert">
+      <span class="eyebrow">A loose thread</span>
+      <h2 class="error-title">The playground couldn't start.</h2>
+      <p class="error-description">
+        Fray needs WebGPU, a supported browser, and hardware acceleration to bring every thread to life.
+      </p>
+      <button class="retry" type="button">
+        Try again<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" /></svg>
+      </button>
+    </div>
+
+    <div class="explore-sheet" role="dialog" aria-modal="true" aria-labelledby="explore-title" hidden>
+      <div class="explore-card">
+        <div class="dialog-heading">
+          <span class="eyebrow">A few ways in</span
+          ><button class="explore-close icon-button" type="button" aria-label="Close explore">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <h2 id="explore-title">Start with a spark.</h2>
+        <p class="dialog-description">
+          Three little experiments. A material, a mood, and somewhere to begin. What happens next is yours.
+        </p>
+        <div class="experiment-list">
+          <button class="experiment-card" type="button" data-experiment="ribbons">
+            <span class="experiment-art art-ribbons" aria-hidden="true"
+              ><span class="ribbon ribbon-one"></span><span class="ribbon ribbon-two"></span
+              ><span class="ribbon ribbon-three"></span><span class="art-caption">01 / CUT &amp; DRIFT</span></span
+            >
+            <span class="experiment-content"
+              ><span class="experiment-title">Ribbons in motion</span
+              ><span class="experiment-meta">Satin · Knife · Breeze · Slow</span
+              ><span class="experiment-description">Make a few long cuts. Watch the ribbons find their own rhythm.</span
+              ><span class="experiment-start"
+                >Try this <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-5-5 5 5-5 5" /></svg></span
+            ></span>
+          </button>
+          <button class="experiment-card" type="button" data-experiment="storm">
+            <span class="experiment-art art-storm" aria-hidden="true"
+              ><span class="storm-weave"></span><span class="storm-cut"></span
+              ><span class="art-caption">02 / LET LOOSE</span></span
+            >
+            <span class="experiment-content"
+              ><span class="experiment-title">Storm study</span
+              ><span class="experiment-meta">Gauze · Claw · Gale · Real time</span
+              ><span class="experiment-description">Rake across the weave. Let the wind finish what you started.</span
+              ><span class="experiment-start"
+                >Try this <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-5-5 5 5-5 5" /></svg></span
+            ></span>
+          </button>
+          <button class="experiment-card" type="button" data-experiment="gold">
+            <span class="experiment-art art-gold" aria-hidden="true"
+              ><span class="gold-fold"></span><span class="art-caption">03 / CHASE THE LIGHT</span></span
+            >
+            <span class="experiment-content"
+              ><span class="experiment-title">Golden hour</span
+              ><span class="experiment-meta">Lamé · Hand · Breeze · Slow</span
+              ><span class="experiment-description">Pull gently into a fold. Frame the shimmer from a new angle.</span
+              ><span class="experiment-start"
+                >Try this <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-5-5 5 5-5 5" /></svg></span
+            ></span>
+          </button>
+        </div>
+        <div class="explore-footer">
+          <p>Each experiment starts fresh and clears your photo print.</p>
+          <span>Or keep exploring your own way.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="collection-sheet" role="dialog" aria-modal="true" aria-labelledby="collection-title" hidden>
+      <div class="collection-card">
+        <div class="dialog-heading">
+          <span class="eyebrow">Beautiful things happen by accident</span
+          ><button class="collection-close icon-button" type="button" aria-label="Close collection">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <h2 id="collection-title">Your collection.</h2>
+        <p class="dialog-description">Saved on this browser. Just for you.</p>
+        <div class="collection-empty">
+          <span class="empty-frames" aria-hidden="true"
+            ><span></span><span></span
+            ><span
+              ><svg viewBox="0 0 24 24">
+                <path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6Z" /></svg></span
+          ></span>
+          <h3>Nothing here. Yet.</h3>
+          <p>A tear, a fold, a happy accident.<br />Use Frame to capture it, then keep it here.</p>
+        </div>
+        <div class="collection-grid"></div>
+        <p class="collection-status" role="status" aria-live="polite"></p>
+        <p class="collection-note">Room for 12 moments. Download your favorites to keep them beyond this browser.</p>
+      </div>
+    </div>
+
+    <div class="help-sheet" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
+      <div class="help-card">
+        <div class="dialog-heading">
+          <span class="eyebrow">Make a little mess</span
+          ><button class="help-close icon-button" type="button" aria-label="Close how to play">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <h2 id="help-title">All yours to unravel.</h2>
+        <p class="dialog-description">
+          No score to beat. No wrong way to play. Just fabric, physics, and a little curiosity.
+        </p>
+        <ol class="help-steps">
+          <li>
+            <span class="step-number">01</span>
+            <div>
+              <h3>Pick your material.</h3>
+              <p>
+                Choose Explore for a ready-to-play experiment, or open Fabric to find eight weaves and print your own
+                photo. Each new material starts a fresh sheet.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number">02</span>
+            <div>
+              <h3>Get a feel for it.</h3>
+              <p>
+                Drag with Hand to pull and tear. Try Knife or Claw to slice, Fist to punch, and Pin to anchor or release
+                a point. Touch works, too.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number">03</span>
+            <div>
+              <h3>Find a moment worth keeping.</h3>
+              <p>
+                Open Frame to pause the fabric and compose a clean shot. Capture it, then keep it in your Collection or
+                download it. Save / share also makes a session card, and Record saves a clip.
+              </p>
+            </div>
+          </li>
+        </ol>
+        <div class="help-view">
+          <h3>A different perspective</h3>
+          <p>
+            Scroll to zoom. Right-drag or use arrow keys to orbit. On touch screens, drag with two fingers to orbit and
+            pinch to zoom. View buttons work, too. In Frame mode, one finger or a regular drag orbits the paused fabric.
+          </p>
+        </div>
+        <div class="shortcut-heading">
+          <h3>At your fingertips</h3>
+          <span>Keyboard shortcuts</span>
+        </div>
+        <dl class="shortcut-grid">
+          <div>
+            <dt>Switch tools</dt>
+            <dd><kbd>1</kbd>–<kbd>5</kbd></dd>
+          </div>
+          <div>
+            <dt>Fresh sheet</dt>
+            <dd><kbd>R</kbd></dd>
+          </div>
+          <div>
+            <dt>Next fabric</dt>
+            <dd><kbd>F</kbd></dd>
+          </div>
+          <div>
+            <dt>Wind strength</dt>
+            <dd><kbd>W</kbd></dd>
+          </div>
+          <div>
+            <dt>Slow motion</dt>
+            <dd><kbd>T</kbd></dd>
+          </div>
+          <div>
+            <dt>Shake fabric</dt>
+            <dd><kbd>X</kbd></dd>
+          </div>
+          <div>
+            <dt>Record clip</dt>
+            <dd><kbd>V</kbd></dd>
+          </div>
+          <div>
+            <dt>Save / share</dt>
+            <dd><kbd>S</kbd></dd>
+          </div>
+          <div>
+            <dt>Frame mode*</dt>
+            <dd><kbd>Space</kbd></dd>
+          </div>
+          <div>
+            <dt>Toggle sound</dt>
+            <dd><kbd>M</kbd></dd>
+          </div>
+          <div>
+            <dt>Help / close</dt>
+            <dd><kbd>?</kbd> / <kbd>Esc</kbd></dd>
+          </div>
+        </dl>
+        <p class="shortcut-note">*While the canvas is focused. Press Escape to return to play.</p>
+      </div>
+    </div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="share-title" hidden>
       <div class="sheet-card">
+        <div class="dialog-heading">
+          <span class="eyebrow">A beautifully broken thing</span
+          ><button class="sheet-close icon-button" type="button" aria-label="Close save and share">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <h2 id="share-title">Keep the damage.</h2>
+        <p class="dialog-description">A little evidence of your creative destruction.</p>
         <img class="sheet-img" alt="Your shredded fabric" />
         <video class="sheet-video" controls playsinline loop muted hidden></video>
         <p class="sheet-text"></p>
         <div class="sheet-actions">
-          <a class="sheet-x" href="#" target="_blank" rel="noopener">Post on X</a>
-          <button class="sheet-share" type="button" hidden>Share…</button>
-          <a class="sheet-save" href="#" download="fray.png">Save image</a>
+          <button class="sheet-keep" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3Z" /></svg>Keep in collection
+          </button>
+          <a class="sheet-save primary-button" href="#" download="fray.png"
+            ><span class="save-label">Save image</span
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5" /></svg></a
+          ><button class="sheet-share" type="button" hidden>Share…</button
+          ><a class="sheet-x" href="#" target="_blank" rel="noopener"
+            >Post on X<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10" /></svg
+          ></a>
         </div>
-        <p class="sheet-hint" hidden>
-          Posting from the web can't attach the clip for you: save it, then add it to your post.
-        </p>
-        <div class="sheet-actions sheet-actions-end">
-          <button class="sheet-close" type="button">Close</button>
-        </div>
+        <p class="sheet-keep-note">Your collection is stored only in this browser.</p>
+        <p class="sheet-hint">Save the file, then attach it to your post on X.</p>
       </div>
     </div>
     <input class="print-input" type="file" accept="image/*" hidden />

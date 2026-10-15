@@ -1,3 +1,5 @@
+import { targetSpeed } from "./hand.js";
+
 var e = class extends Error {};
 const t = {
   maxStorageBuffersPerShaderStage: 10,
@@ -2370,6 +2372,21 @@ fn tartanYarn(i: i32) -> vec3<f32> {
   if (p < 72) { return red; }
   if (p < 76) { return green; }
   return red;
+}
+
+// Detached surface fibres keep the identity of the yarn they came from. In a tartan,
+// that includes its stripe: unravelling a navy or green yarn cannot turn its hair red.
+fn looseFibreAlbedo(material: u32, fam: u32, yarn: i32, seed: u32) -> vec3<f32> {
+  let pale = hashf(seed + 9u) < 0.75;
+  if (material == 0u) {
+    if (fam == 0u) { return vec3<f32>(0.44, 0.44, 0.43); }
+    return select(vec3<f32>(0.08, 0.12, 0.27), vec3<f32>(0.40, 0.42, 0.47), pale);
+  }
+  if (material == 2u) {
+    // The same exposed-wool blend as yarnLook at full wear and loosening.
+    return mix(tartanYarn(yarn), vec3<f32>(0.7, 0.65, 0.6), select(0.0, 0.2625, pale));
+  }
+  return select(fabricRimDyed(material), fabricRimPale(material), pale);
 }
 
 // Ring-dyed indigo warp and undyed weft. \`pix\` is the pixel footprint in metres (filters fibre-scale
@@ -5191,7 +5208,7 @@ struct FOut {
   @location(0) world: vec3<f32>,
   @location(1) tangent: vec3<f32>,
   @location(2) alpha: f32,
-  // unused, family, layer, seed
+  // yarn (fine index), family, layer, seed
   @location(3) @interpolate(flat) id: vec4<u32>,
 };
 
@@ -5246,7 +5263,7 @@ fn vsThreadFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32
   let len = (0.15e-3 + 0.8e-3 * rl * rl) * (1.0 + 2.0 * splay);
   let bend = vec3<f32>(hashf(seed + 4u) - 0.5, hashf(seed + 5u) - 0.5, hashf(seed + 6u) - 0.8) * (0.9 * len);
   let wave = vec3<f32>(hashf(seed + 7u) - 0.5, hashf(seed + 8u) - 0.5, hashf(seed + 9u) - 0.5) * (0.3 * len);
-  return fibre(tp.p + radial * tp.radius, dir, len, bend, wave, 1.0 + 2.0 * hashf(seed + 10u), 25e-6, vi, u1, vec4<u32>(0u, ch.ri.fam, ch.ri.layer, seed));
+  return fibre(tp.p + radial * tp.radius, dir, len, bend, wave, 1.0 + 2.0 * hashf(seed + 10u), 25e-6, vi, u1, vec4<u32>(ch.ri.yarn, ch.ri.fam, ch.ri.layer, seed));
 }
 
 @fragment
@@ -5254,11 +5271,8 @@ fn fsThreadFuzz(in: FOut) -> @location(0) vec4<f32> {
   let V = normalize(F.camPos.xyz - in.world);
   let T = normalize(in.tangent);
   let N = normalize(V - dot(V, T) * T);
-  // loose fibres are mostly the pale core and abraded surface fibres
-  let pale = hashf(in.id.w + 9u) < 0.75;
-  var albedo = vec3<f32>(0.40, 0.42, 0.47);
-  if (in.id.y == 0u) { albedo = vec3<f32>(0.44, 0.44, 0.43); }
-  if (!pale && in.id.y == 1u) { albedo = vec3<f32>(0.08, 0.12, 0.27); }
+  // Loose fibres retain their fabric and (for tartan) the source yarn's stripe.
+  let albedo = looseFibreAlbedo(R.layers[in.id.z].refine.w, in.id.y, i32(in.id.x), in.id.w);
   let key = keyLight(in.world);
   let sh = shadowFactor(in.world, N);
   var c = fiberShade(N, T, V, key.xyz, albedo, 0.2) * (key.w * sh) * F.keyColor.rgb + overShade(N, T, V, albedo, 0.2, in.world, N) + F.ambient.rgb * albedo;
@@ -8495,8 +8509,12 @@ fn pickNear(@builtin(global_invocation_id) gid: vec3<u32>) {
       n && this.device.queue.writeBuffer(this.gripU, 64 * t, new Float32Array([e[0], e[1], e[2], n.count]));
     }
     letGo(e = 0) {
-      let t = this.held[e];
-      t && (t.releasing = !0);
+      const held = this.held[e];
+      if (!held || held.releasing) return;
+      held.releasing = !0;
+      // Stop pulling now; topology readback can retain ownership for cleanup
+      // without keeping the released cloth tethered to the old hand target.
+      this.setHold(0, e);
     }
     release(e = 0) {
       let t = this.held[e];
@@ -8582,7 +8600,7 @@ var We = class {
       this.age += e;
       let n = Ue(this.goal(t), this.offset),
         r = H(n),
-        i = Math.min(z.maxSpeed, Math.sqrt(2 * z.maxAccel * r), r / e),
+        i = targetSpeed(r, e, z.maxSpeed, z.maxAccel),
         a = r > 0 ? V(n, i / r) : [0, 0, 0],
         o = Ue(a, this.vel),
         s = H(o),
@@ -10178,7 +10196,7 @@ fn slip(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 }
 `,
-  ot = `// Yarn damage field (src/simulation/yarnField.ts, mirrored exactly): per crossing the damage of its
+  ot = `// Yarn damage field: per crossing the damage of its
 // warp and pick segments, advanced after each substep from the strain interpolated from the active
 // parallel spans around it; the spans then take their intact fraction from it, and a span whose yarns
 // have all separated ruptures. Passes, in order: spanStrain (strain snapshot per span), fieldUpdatePick
@@ -10296,8 +10314,9 @@ fn sepSnapshot(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 fn sepAt(c: u32, f: u32) -> bool { return ((pullBits[c >> 4u] >> (2u * (c & 15u) + f)) & 1u) == 1u; }
 
-// Overload of the yarn of family f at crossing (k, m) of layer field F, at most 1 + cap (shareFactor).
-fn shareFactor(F: vec4<u32>, f: u32, k: u32, m: u32, cap: f32) -> f32 {
+// Load amplification from adjacent separated yarns. The receiving crossings' friction
+// limits the additional force, independently of the yarn's rupture strength.
+fn shareFactor(F: vec4<u32>, f: u32, k: u32, m: u32) -> f32 {
   let reach = i32(select(F.w & 0xFFFFu, F.w >> 16u, f == 1u));
   let along = i32(select(k, m, f == 1u));
   let lenAlong = i32(select(F.y, F.z, f == 1u));
@@ -10321,13 +10340,21 @@ fn shareFactor(F: vec4<u32>, f: u32, k: u32, m: u32, cap: f32) -> f32 {
       runs++;
     }
   }
-  return 1.0 + min(SHARE_FRACTION * f32(runs) * 0.5, cap);
+  return 1.0 + SHARE_FRACTION * f32(runs) * 0.5;
+}
+
+// All quantities are forces on one yarn (N), except the dimensionless amplification.
+// Crimp makes tension nonlinear in strain: sharing strain would amplify the force
+// too far and could exceed the force friction can transfer across the weave.
+fn sharedYarnForce(tension: f32, factor: f32, transfer: f32) -> f32 {
+  let base = max(0.0, tension);
+  return base + min(base * max(0.0, factor - 1.0), max(0.0, transfer));
 }
 
 // Yarn q of the family-f span owned by node n (invocation n * MAX_BUNDLE_F + q): its crossings within
 // the span are in series and carry the same tension, so it softens at its weakest crossing only (the
-// lowest peak strain), at the yarn's strain interpolated across the bundle at the yarn and at the
-// middle of the span; mirrored exactly by updateField (yarnField.ts). One pass per family: within a
+// greatest force / strength ratio), from strain interpolated across the bundle at the yarn and at the
+// middle of the span, with force transfer bounded by crossing friction. One pass per family: within a
 // pass every crossing's byte of the field word has a single writer.
 const MAX_BUNDLE_F: u32 = 16u;
 
@@ -10367,15 +10394,16 @@ fn fieldUpdateYarn(gid: u32, f: u32) {
   let dk = select(1u, 0u, f == 1u);
   let dm = select(0u, 1u, f == 1u);
   let eps = interpolatedStrain(l, f, k0 + (Pn >> 1u) * dk, m0 + (Pn >> 1u) * dm);
-  if (eps >= 0.5 * NO_STRAIN) { return; }
+  if (eps >= 0.5 * NO_STRAIN || eps <= 0.0) { return; }
   let y = P.layers[l].yarn[f];
-  // no crossing can soften even at the largest overload: nothing to do (exact early out; most yarns)
+  let tension = axialTension(y, eps);
+  // No crossing can soften even at the largest force amplification (exact early out).
   var minPeak = 1e30;
   for (var p = 0u; p < Pn; p++) {
     let c = F.x + (m0 + p * dm) * F.y + k0 + p * dk;
-    minPeak = min(minPeak, strainAtTension(y, strength[c][f] * f32(B) / areaAt(c, f)));
+    minPeak = min(minPeak, strength[c][f] * f32(B) / areaAt(c, f));
   }
-  if (eps * (1.0 + SHARE_FRACTION * f32(SHARE_RUN)) <= minPeak) { return; }
+  if (tension * (1.0 + SHARE_FRACTION * f32(SHARE_RUN)) <= minPeak) { return; }
   // friction the crossings can pass to this yarn (shareCap): compaction of one crossing plus the wrap
   // force of the crossing yarn's tension at the middle of the span
   let g = 1u - f;
@@ -10386,23 +10414,22 @@ fn fieldUpdateYarn(gid: u32, f: u32) {
   let tCross = select(max(0.0, axialTension(P.layers[l].yarn[g], ec)) * areaAt(F.x + mM * F.y + kM, g) / f32(Bg), 0.0, ec >= 0.5 * NO_STRAIN);
   let reach = select(F.w & 0xFFFFu, F.w >> 16u, f == 1u);
   let transfer = f32(2u * reach + 1u) * P.layers[l].a.y * (nodes[n].n0 / f32(bu * bv) + P.layers[l].a.z * tCross);
-  // where the yarn softens: where it already has, else where overload / peak strain is largest
+  // Keep an existing softening site; otherwise use the greatest force / peak-force ratio.
   var best = F.x + m0 * F.y + k0;
   var bestScore = -1.0;
-  var bestOmega = 1.0;
+  var bestForce = 0.0;
   var soft0 = 0xFFFFFFFFu;
   var softCode = 0u;
   for (var p = 0u; p < Pn; p++) {
     let kk = k0 + p * dk;
     let mm = m0 + p * dm;
     let c = F.x + mm * F.y + kk;
-    let omega = shareFactor(F, f, kk, mm, transfer / strength[c][f]);
-    let peak = strainAtTension(y, strength[c][f] * f32(B) / areaAt(c, f));
-    let score = omega / peak;
+    let force = sharedYarnForce(tension * areaAt(c, f) / f32(B), shareFactor(F, f, kk, mm), transfer);
+    let score = force / strength[c][f];
     if (score > bestScore) {
       best = c;
       bestScore = score;
-      bestOmega = omega;
+      bestForce = force;
     }
     let code = damageAt(c, f);
     if (code > softCode) {
@@ -10412,9 +10439,10 @@ fn fieldUpdateYarn(gid: u32, f: u32) {
   }
   if (soft0 != 0xFFFFFFFFu) {
     best = soft0;
-    bestOmega = shareFactor(F, f, (best - F.x) % F.y, (best - F.x) / F.y, transfer / strength[best][f]);
+    bestForce = sharedYarnForce(tension * areaAt(best, f) / f32(B), shareFactor(F, f, (best - F.x) % F.y, (best - F.x) / F.y), transfer);
   }
-  let d = yarnDamage(y, f32(B), areaAt(best, f), strength[best][f], soft, eps * bestOmega);
+  let sharedStrain = strainAtTension(y, bestForce * f32(B) / areaAt(best, f));
+  let d = yarnDamage(y, f32(B), areaAt(best, f), strength[best][f], soft, sharedStrain);
   let bestCode = select(min(u32(floor(d * 255.0)), PULLED - 1u), CUT, d >= 1.0);
   let word = field[best];
   let oldCode = (word >> (8u * f)) & 0xFFu;
@@ -15051,17 +15079,21 @@ const Q = Dt.h,
     pace = sn;
     reacquire = -1 / 0;
     topologyEvents = 0;
+    damageCounts = [0, 0];
     camera = { ...k };
     width = 1;
     height = 1;
     cssWidth = 1;
     cssHeight = 1;
     visible = !0;
+    // Frame mode freezes the solver while leaving rendering and the camera available.
+    paused = !1;
     ready = !1;
     lastFrame = 0;
     simBacklog = 0;
     refineSteps = 0;
     releaseEpoch = 0;
+    releasing = /* @__PURE__ */ new Map();
     grips = /* @__PURE__ */ new Map();
     down = /* @__PURE__ */ new Map();
     picking = /* @__PURE__ */ new Map();
@@ -15072,7 +15104,7 @@ const Q = Dt.h,
     canvasFormat = `bgra8unorm`;
     frameTexture = null;
     // a frame capture (share card) was asked for: taken with the next frame
-    captureWanted = !1;
+    captureWanted = null;
     capturePending = null;
     // clip recorder (WebCodecs): the canvas encoded to H.264 at up to 30 fps while recording
     recorder = null;
@@ -15109,6 +15141,8 @@ const Q = Dt.h,
     statsTime = 0;
     frameCount = 0;
     substepsDone = 0;
+    gpuFrameTime = 0;
+    gpuFrameSamples = 0;
     async init(t, r, i, a, o) {
       ((this.canvas = t), X({ type: `status`, state: `loading` }));
       // the settled rest state of this fabric (see dev op `drape`; a stale or missing file just settles here)
@@ -15248,6 +15282,7 @@ const Q = Dt.h,
     }
     reset() {
       if (this.ready && this.snapshot) {
+        this.setPaused(!1);
         if (this.stage) {
           this.endExperience();
           return;
@@ -15257,7 +15292,10 @@ const Q = Dt.h,
     }
     restoreCloth() {
       if (!this.snapshot) return;
-      (this.releaseAll(), this.releaseEpoch++, this.interaction.releaseAll());
+      (this.releaseAll(), this.releaseEpoch++, this.releasing.clear(), this.interaction.releaseAll());
+      this.audioPort?.postMessage({ reset: !0 });
+      this.damageCounts = [0, 0];
+      this.probeSteps = 0;
       let e = this.device.createCommandEncoder({ label: `reset` });
       (e.copyBufferToBuffer(this.snapshot.x, 0, this.solver.x, 0, this.solver.x.size),
         e.copyBufferToBuffer(this.snapshot.segs, 0, this.solver.segs, 0, this.solver.segs.size),
@@ -15326,7 +15364,8 @@ const Q = Dt.h,
       }
       t === this.experienceToken &&
         this.ready &&
-        (this.releaseAll(),
+        (this.paused && this.setPaused(!1),
+        this.releaseAll(),
         this.restoreCloth(),
         X({ type: `cue`, cue: { kind: `stop` } }),
         (this.laugh = null),
@@ -15392,6 +15431,8 @@ const Q = Dt.h,
       ((this.renderer.post = { ...F, glitch: 0.7 * n, glitchSeed: Math.floor(e / 70) % 97 }), (this.dirty = !0));
     }
     setSize(e, t, n, r) {
+      // Render-quality changes keep the same CSS camera and pending cloth contacts.
+      if (n !== this.cssWidth || r !== this.cssHeight) this.cancelPicks();
       ((this.width = e), (this.height = t), (this.cssWidth = n), (this.cssHeight = r));
       let i = this.context.canvas;
       ((i.width = e), (i.height = t), this.renderer?.resize(e, t), (this.dirty = !0));
@@ -15399,9 +15440,8 @@ const Q = Dt.h,
     wake() {
       this.asleep && ((this.asleep = !1), (this.restFor = 0), (this.simBacklog = 0));
     }
-    ray(e, t) {
-      let n = A(this.camera, this.width / this.height),
-        r = (e / this.cssWidth) * 2 - 1,
+    ray(e, t, n = A(this.camera, this.width / this.height)) {
+      let r = (e / this.cssWidth) * 2 - 1,
         i = 1 - (t / this.cssHeight) * 2,
         a = O(n.invViewProj, [r, i, 0]),
         o = O(n.invViewProj, [r, i, 1]),
@@ -15416,6 +15456,7 @@ const Q = Dt.h,
       // hands let go; pins stay (they are the point of the pin tool)
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.claws.clear());
       for (let [e, t] of [...this.grips]) t.pinned || this.endGrip(e);
+      this.down.clear();
       ((this.tool = e), this.ready && !this.stage && X({ type: `cursor`, cursor: this.toolCursor() }));
     }
     // the point on the horizontal plane z under the pointer
@@ -15439,19 +15480,61 @@ const Q = Dt.h,
       }
       if (e.phase === `down`) {
         if (this.claws.size >= 4) return;
-        let t = this.planeHit(e.x, e.y, FIST.clawDepth);
-        t && (this.claws.set(e.id, { tip: t, dir: [1, 0] }), this.wake(), (this.dirty = !0));
-      } else if (e.phase === `move`) {
-        let t = this.claws.get(e.id);
-        if (!t) return;
-        let n = this.planeHit(e.x, e.y, FIST.clawDepth);
-        if (!n) return;
-        let r = [n[0] - t.tip[0], n[1] - t.tip[1]],
-          i = Math.hypot(r[0], r[1]);
-        (i > 1e-4 && (t.dir = [r[0] / i, r[1] / i]), (t.tip = n), this.wake());
-      } else this.claws.delete(e.id);
+        let tip = this.planeHit(e.x, e.y, FIST.clawDepth);
+        if (tip) {
+          this.claws.set(e.id, { tip, dir: [1, 0], pending: [tip], done: !1, doneAt: Infinity, finalApplied: !1 });
+          this.wake();
+          this.dirty = !0;
+        }
+        return;
+      }
+      const claw = this.claws.get(e.id);
+      if (!claw) return;
+      if (e.phase !== `move` && e.phase !== `up`) {
+        this.claws.delete(e.id);
+        return;
+      }
+      if (claw.done) return;
+      const tip = this.planeHit(e.x, e.y, FIST.clawDepth);
+      const last = claw.pending.at(-1) ?? claw.tip;
+      if (tip && Math.hypot(tip[0] - last[0], tip[1] - last[1]) > 1e-6) {
+        claw.pending.push(tip);
+        // Keep the first unconsumed pose, turns, and endpoint without growing a
+        // long trail behind the finger. Existing solver steps consume the path.
+        if (claw.pending.length > 8) {
+          let index = 1,
+            smallest = Infinity;
+          for (let j = 1; j < claw.pending.length - 1; j++) {
+            const [a, b, c] = claw.pending.slice(j - 1, j + 2);
+            const bend =
+              Math.hypot(b[0] - a[0], b[1] - a[1]) +
+              Math.hypot(c[0] - b[0], c[1] - b[1]) -
+              Math.hypot(c[0] - a[0], c[1] - a[1]);
+            if (bend < smallest) {
+              smallest = bend;
+              index = j;
+            }
+          }
+          claw.pending.splice(index, 1);
+        }
+      }
+      if (e.phase === `up`) {
+        claw.done = !0;
+        claw.doneAt = e.time;
+      }
+      this.wake();
+      this.dirty = !0;
     }
     // Pin: a stationary grip on the picked node; picking a pinned node again lets it go
+    pickRadius(point, blade = !1) {
+      // Proximity is measured in CSS pixels; the actual cloth grip patch stays the same size.
+      const scale = this.height / this.cssHeight;
+      if (point.pointerType === `touch`) {
+        const contact = Math.max(+point.width || 1, +point.height || 1);
+        return Math.min(blade ? 18 : 28, Math.max(blade ? 12 : 20, contact * 0.6)) * scale;
+      }
+      return Math.max(blade ? 6 : 8, (blade ? KNIFE.pickWindow : 0.016) * this.cssHeight) * scale;
+    }
     pinPointer(e) {
       if (e.phase !== `down`) return;
       let t = { time: e.time, x: e.x, y: e.y },
@@ -15459,7 +15542,7 @@ const Q = Dt.h,
         r = A(this.camera, this.width / this.height),
         i = (t.x / this.cssWidth) * this.width,
         a = (t.y / this.cssHeight) * this.height,
-        o = Math.max(8, 0.016 * this.height);
+        o = this.pickRadius(e);
       this.interaction.pickAt(r.viewProj, i, a, this.width, this.height, o).then((e) => {
         if (n !== this.pickToken || !e) return;
         let i = this.interaction.holder(e.node);
@@ -15490,6 +15573,7 @@ const Q = Dt.h,
     stepProps(e) {
       let t = [],
         n = this.simTime;
+      const roster = [];
       this.fists = this.fists.filter((e) => n - e.t0 < FIST.total);
       for (let e of this.fists) {
         let r = n - e.t0,
@@ -15499,17 +15583,45 @@ const Q = Dt.h,
               : r < FIST.down + FIST.hold
                 ? FIST.bottom
                 : FIST.bottom + (FIST.top - FIST.bottom) * Math.min(1, (r - FIST.down - FIST.hold) / FIST.up);
+        roster.push(e);
         t.push({ a: [e.p[0], e.p[1], i], b: [e.p[0], e.p[1], i + 0.02], radius: FIST.radius, active: !0, sharp: !1 });
       }
-      for (let e of this.claws.values())
+      const now = Rn(performance.now());
+      for (const [id, claw] of this.claws) {
+        // A released fast swipe still gets its last contact substep. Never
+        // replay a stale trail after a long GPU stall or while in slow motion.
+        if (claw.done && (claw.finalApplied || now - claw.doneAt > 120)) {
+          this.claws.delete(id);
+          continue;
+        }
+        const tip = claw.pending.shift();
+        if (tip) {
+          const dx = tip[0] - claw.tip[0],
+            dy = tip[1] - claw.tip[1];
+          const distance = Math.hypot(dx, dy);
+          if (distance > 1e-4) claw.dir = [dx / distance, dy / distance];
+          claw.tip = tip;
+        }
+        roster.push(claw);
         for (let n = -1; n <= 1; n++) {
-          let r = [e.tip[0] - e.dir[1] * n * FIST.clawGap, e.tip[1] + e.dir[0] * n * FIST.clawGap, e.tip[2]];
+          let r = [
+            claw.tip[0] - claw.dir[1] * n * FIST.clawGap,
+            claw.tip[1] + claw.dir[0] * n * FIST.clawGap,
+            claw.tip[2],
+          ];
           t.push({ a: [r[0], r[1], r[2] + 0.03], b: r, radius: FIST.clawRadius, active: !0, sharp: !0 });
         }
+        if (claw.done && !claw.pending.length) claw.finalApplied = !0;
+      }
+      // Previous capsule positions are indexed. When a fist expires or a claw
+      // changes, do not sweep its replacement from the removed body's position.
+      if (roster.length !== this.propRoster?.length || roster.some((body, i) => body !== this.propRoster[i]))
+        this.body.hasPrev = !1;
+      this.propRoster = roster;
       (t.length > 0 || this.body.count > 0) && this.body.setPose(t, e);
     }
     shake() {
-      if (!this.ready || this.stage) return;
+      if (!this.ready || this.stage || this.paused) return;
       let e = this.scene,
         t = e.nodeCount,
         n = new Float32Array(4 * t),
@@ -15538,9 +15650,24 @@ const Q = Dt.h,
     setTimeScale(e) {
       this.timeScale = Math.max(0.05, Math.min(1, +e || 1));
     }
-    // Knife: each pointer sample picks the visible node under it (one pick in flight per pointer) and
-    // the run from the previous pick's node is queued as a stroke (bodyContact.cut). A sample that
-    // misses the cloth breaks the run; the sample in flight when the pointer lifts still lands.
+    setPaused(paused) {
+      if (!this.ready || (paused && this.stage)) {
+        X({
+          type: `pause`,
+          paused: this.paused,
+          reason: this.stage ? `Finish Smilie before framing the fabric.` : `The fabric is still getting ready.`,
+        });
+        return;
+      }
+      paused = !!paused;
+      if (paused && !this.paused) this.releaseAll(!0);
+      this.paused = paused;
+      this.simBacklog = 0;
+      this.lastFrame = performance.now();
+      this.dirty = !0;
+      X({ type: `pause`, paused });
+    }
+    // Keep a short path while GPU picking is in flight, preserving turns and the release endpoint.
     bladePointer(e) {
       if (e.phase === `cancel` && e.id === -1) {
         this.strokes.clear();
@@ -15548,40 +15675,89 @@ const Q = Dt.h,
       }
       if (e.phase === `down`) {
         if (this.strokes.has(e.id) || this.strokes.size >= 4) return;
-        let t = { last: -1, pending: null, busy: !1, done: !1 };
+        let t = { last: -1, pending: [], busy: !1, done: !1, doneAt: Infinity };
         (this.strokes.set(e.id, t), this.bladeSample(e.id, t, e));
       } else if (e.phase === `move`) {
         let t = this.strokes.get(e.id);
         t && !t.done && this.bladeSample(e.id, t, e);
       } else {
         let t = this.strokes.get(e.id);
-        t && ((t.done = !0), e.phase === `up` && t.busy ? 0 : this.strokes.delete(e.id));
+        if (!t) return;
+        if (e.phase !== `up`) {
+          this.strokes.delete(e.id);
+          return;
+        }
+        t.done = !0;
+        t.doneAt = e.time;
+        this.bladeSample(e.id, t, e);
       }
     }
     bladeSample(e, t, n) {
-      if (((t.pending = { x: n.x, y: n.y }), t.busy)) return;
+      if (n) {
+        const last = t.pending.at(-1) ?? t.sample;
+        if (!last || last.x !== n.x || last.y !== n.y) t.pending.push(n);
+        // Simplify the straightest interior point first, retaining both ends and sharp corners.
+        if (t.pending.length > 12) {
+          let index = 1,
+            smallest = Infinity;
+          for (let j = 1; j < t.pending.length - 1; j++) {
+            const [a, b, c] = t.pending.slice(j - 1, j + 2);
+            const bend =
+              Math.hypot(b.x - a.x, b.y - a.y) + Math.hypot(c.x - b.x, c.y - b.y) - Math.hypot(c.x - a.x, c.y - a.y);
+            if (bend < smallest) {
+              smallest = bend;
+              index = j;
+            }
+          }
+          t.pending.splice(index, 1);
+        }
+      }
+      if (t.busy) return;
+      if (!t.pending.length || (t.done && Rn(performance.now()) - t.doneAt > 200)) {
+        if (t.done) this.strokes.delete(e);
+        return;
+      }
       t.busy = !0;
-      let r = t.pending;
-      t.pending = null;
+      let r = t.pending.shift();
+      // Sparse mobile events can span more than the knife's safe weave-space run.
+      // Pick along that screen segment so cuts stay continuous without cutting across folds.
+      if (t.sample) {
+        const distance = Math.hypot(r.x - t.sample.x, r.y - t.sample.y);
+        const spacing = Math.max(8, Math.min(24, this.cssHeight / 32));
+        if (distance > spacing) {
+          t.pending.unshift(r);
+          const fraction = spacing / distance;
+          r = { ...r, x: t.sample.x + (r.x - t.sample.x) * fraction, y: t.sample.y + (r.y - t.sample.y) * fraction };
+        }
+      }
+      t.sample = r;
       let i = A(this.camera, this.width / this.height),
         a = (r.x / this.cssWidth) * this.width,
         o = (r.y / this.cssHeight) * this.height,
-        s = Math.max(6, KNIFE.pickWindow * this.height);
+        s = this.pickRadius(r, !0);
       this.interaction.pickAt(i.viewProj, a, o, this.width, this.height, s).then(
         (n) => {
           if (((t.busy = !1), this.strokes.get(e) !== t)) return;
+          if (t.done && Rn(performance.now()) - t.doneAt > 200) {
+            this.strokes.delete(e);
+            return;
+          }
           if (n) {
             (this.body.cut(t.last >= 0 ? t.last : n.node, n.node), (t.last = n.node), this.wake(), (this.dirty = !0));
           } else t.last = -1;
-          t.done ? this.strokes.delete(e) : t.pending && this.bladeSample(e, t, t.pending);
+          this.bladeSample(e, t);
         },
         () => {
-          ((t.busy = !1), t.done && this.strokes.delete(e));
+          if (this.strokes.get(e) === t) this.strokes.delete(e);
         },
       );
     }
     pointer(e) {
-      if (!this.ready || this.stage) return;
+      if (!this.ready || this.stage || this.paused) return;
+      if (e.phase === `cancel` && e.id === -1) {
+        this.releaseAll(!!e.preservePins);
+        return;
+      }
       if (this.tool === `blade`) {
         this.bladePointer(e);
         return;
@@ -15598,11 +15774,11 @@ const Q = Dt.h,
         (e.phase === `cancel` && e.id === -1) || this.pinPointer(e);
         return;
       }
-      let t = { time: e.time, x: e.x, y: e.y };
+      let t = { time: e.time, x: e.x, y: e.y, pointerType: e.pointerType, width: e.width, height: e.height };
       if (e.phase === `cancel` && e.id === -1) this.releaseAll();
       else if (e.phase === `down`) {
         if (
-          ((this.grips.get(e.id)?.track.upTime ?? 1 / 0) < 1 / 0 && this.endGrip(e.id),
+          ((this.down.get(e.id)?.upTime ?? Infinity) < Infinity && (this.picking.delete(e.id), this.endGrip(e.id)),
           this.down.has(e.id) || this.down.size >= 4)
         )
           return;
@@ -15610,8 +15786,8 @@ const Q = Dt.h,
       } else
         e.phase === `move`
           ? this.down.get(e.id)?.add(t)
-          : e.phase === `up` && this.grips.has(e.id)
-            ? (this.down.get(e.id)?.add(t), (this.grips.get(e.id).track.upTime = t.time))
+          : e.phase === `up` && this.down.has(e.id)
+            ? (this.down.get(e.id).add(t), (this.down.get(e.id).upTime = t.time))
             : (this.down.delete(e.id), this.picking.delete(e.id), this.endGrip(e.id));
     }
     async beginGrip(e, t) {
@@ -15620,25 +15796,54 @@ const Q = Dt.h,
       let r = A(this.camera, this.width / this.height),
         i = (t.x / this.cssWidth) * this.width,
         a = (t.y / this.cssHeight) * this.height,
-        o = Math.max(8, 0.016 * this.height),
-        s = await this.interaction.pickAt(r.viewProj, i, a, this.width, this.height, o);
+        o = this.pickRadius(t);
+      const pick = () => this.interaction.pickAt(r.viewProj, i, a, this.width, this.height, o).catch(() => null);
+      let s = await pick();
+      if (this.picking.get(e) !== n) return;
+      // A previous finger can have released its force while its patch is still
+      // reserved for topology readback. Keep the new gesture alive until that
+      // reservation ends, then pick the cloth again in its current state.
+      const cleanup =
+        s &&
+        (this.releasing.get(this.interaction.holder(s.node)) ??
+          (this.interaction.freeSlot() < 0 && this.releasing.size ? Promise.race(this.releasing.values()) : null));
+      if (cleanup) {
+        const completed = await cleanup;
+        if (this.picking.get(e) !== n) return;
+        const track = this.down.get(e);
+        if (!completed || !track || Rn(performance.now()) - track.upTime > 150) {
+          this.picking.delete(e);
+          this.down.delete(e);
+          return;
+        }
+        s = await pick();
+      }
       if (this.picking.get(e) !== n) return;
       this.picking.delete(e);
       let c = this.down.get(e);
-      if (!s || !c || this.interaction.holder(s.node) >= 0) return;
+      if (!s || !c || Rn(performance.now()) - c.upTime > 150 || this.interaction.holder(s.node) >= 0) {
+        this.down.delete(e);
+        return;
+      }
       let l = this.interaction.freeSlot(),
         u = s.position;
-      if (l < 0 || !this.interaction.attach(s.node, u, l, s.window)) return;
+      if (l < 0 || !this.interaction.attach(s.node, u, l, s.window)) {
+        this.down.delete(e);
+        return;
+      }
       let d = E(w(this.camera.target, r.eye)),
         f = { slot: l, node: s.node, hand: new We(u, te(d, -1)), track: c, plane: u, normal: d, downPoint: u };
+      // A quick pull may finish during the GPU pick. Replay at most 50 ms of its
+      // path instead of jumping straight to release or holding a stale touch.
+      if (Number.isFinite(c.upTime)) f.replayTime = Math.max(c.first.time, c.upTime - 50);
       ((f.downPoint = this.planePoint(f, c.first) ?? u),
         this.grips.set(e, f),
         this.audioPort?.postMessage({ grip: l, held: !0 }),
         this.wake(),
         X({ type: `cursor`, cursor: `grabbing` }));
     }
-    planePoint(e, t) {
-      let { origin: n, dir: r } = this.ray(t.x, t.y),
+    planePoint(e, t, view) {
+      let { origin: n, dir: r } = this.ray(t.x, t.y, view),
         i = T(r, e.normal);
       return Math.abs(i) < 1e-6 ? null : ne(n, te(r, T(w(e.plane, n), e.normal) / i));
     }
@@ -15648,37 +15853,78 @@ const Q = Dt.h,
       if (!t) return;
       (this.grips.delete(e), this.audioPort?.postMessage({ grip: t.slot, held: !1 }), this.interaction.letGo(t.slot));
       let n = this.releaseEpoch;
-      (this.topology.request().then(() => {
-        n === this.releaseEpoch && (this.interaction.release(t.slot), (this.refineSteps = Math.round(Ot.duration / Q)));
-      }),
-        this.grips.size === 0 && X({ type: `cursor`, cursor: `grab` }));
+      const cleanup = this.topology.request().then(
+        () => {
+          if (n !== this.releaseEpoch) return !1;
+          (this.interaction.release(t.slot), (this.refineSteps = Math.round(Ot.duration / Q)));
+          return !0;
+        },
+        () => {
+          // A failed readback cannot leave a zero-force reservation permanently
+          // occupying a grip slot, or attach a waiting finger to stale topology.
+          if (n === this.releaseEpoch) this.interaction.release(t.slot);
+          return !1;
+        },
+      );
+      this.releasing.set(t.slot, cleanup);
+      cleanup.then(() => {
+        if (this.releasing.get(t.slot) === cleanup) this.releasing.delete(t.slot);
+      });
+      this.grips.size === 0 && X({ type: `cursor`, cursor: `grab` });
     }
-    releaseAll() {
+    releaseAll(preservePins = !1) {
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.body?.clearStrokes(), this.claws.clear());
       ((this.fists.length = 0), this.body && this.body.count > 0 && !this.stage && this.body.setPose([], Q));
-      for (let e of [...this.grips.keys()]) this.endGrip(e);
+      for (let [e, grip] of [...this.grips]) if (!preservePins || !grip.pinned) this.endGrip(e);
       this.down.clear();
+    }
+    cancelPicks() {
+      // A pending screen-space hit belongs to the camera that submitted it.
+      this.pickToken++;
+      for (const id of this.picking.keys()) this.down.delete(id);
+      this.picking.clear();
+      this.strokes.clear();
+      this.body?.clearStrokes();
+    }
+    setCamera(preset) {
+      if (!this.ready || this.stage || ![`front`, `angle`, `detail`, `reset`].includes(preset)) return;
+      this.cancelPicks();
+      const variation = {
+        front: { pitch: 0.03, yaw: 0 },
+        angle: { pitch: 0.64, yaw: -0.42 },
+        detail: { distance: 0.53, pitch: 0.32, yaw: -0.18 },
+        reset: {},
+      }[preset];
+      this.camera = { ...k, target: [...k.target], ...variation };
+      this.dirty = !0;
+    }
+    zoom(e) {
+      if (!this.ready || this.stage || !Number.isFinite(e)) return;
+      if (e) this.cancelPicks();
+      this.camera.distance = Math.max(0.3, Math.min(1.15, this.camera.distance * Math.exp(e * 8e-4)));
+      this.dirty = !0;
     }
     // orbit the camera: yaw and pitch deltas (rad); pitch 0 looks straight down
     orbit(e, t) {
-      if (this.stage) return;
+      if (!this.ready || this.stage || !Number.isFinite(e) || !Number.isFinite(t)) return;
+      if (e || t) this.cancelPicks();
       ((this.camera.yaw += e),
         (this.camera.pitch = Math.max(0.03, Math.min(1.3, this.camera.pitch + t))),
         (this.dirty = !0));
     }
     wheel(e) {
-      if (!this.stage) {
-        if (this.grips.size > 0) for (let t of this.grips.values()) t.hand.wheel(-e * 6e-5);
-        else
-          ((this.camera.distance = Math.max(0.3, Math.min(1.15, this.camera.distance * Math.exp(e * 8e-4)))),
-            (this.dirty = !0));
+      if (this.ready && !this.stage && Number.isFinite(e)) {
+        const held = [...this.grips.values()].filter((grip) => !grip.pinned);
+        if (!this.paused && held.length > 0) for (let t of held) t.hand.wheel(-e * 6e-5);
+        else this.zoom(e);
       }
     }
     substepIterations() {
       return this.refineSteps <= 0 ? 0 : (this.refineSteps--, Ot.newtonIterations);
     }
-    stepHandles(e, t) {
+    stepHandles(e, t, inputStep = e / this.timeScale) {
       ((this.simTime += e), this.stepProps(e), this.body.tickWind(this.simTime));
+      let view;
       for (let [n, r] of [...this.grips]) {
         if (r.pinned) {
           (r.hand.step(e, [0, 0, 0]),
@@ -15686,15 +15932,36 @@ const Q = Dt.h,
             this.interaction.setPinch(r.hand.pinch, r.slot));
           continue;
         }
-        if (r.track.upTime <= t) {
+        if (r.finalSampled) {
           this.endGrip(n);
           continue;
         }
-        let i = this.planePoint(r, r.track.at(t));
-        (r.track.prune(t),
-          r.hand.step(e, i ? w(i, r.downPoint) : [0, 0, 0]),
-          this.interaction.setTarget(r.hand.target, r.slot),
-          this.interaction.setPinch(r.hand.pinch, r.slot));
+        const inputFrom = r.inputTime ?? r.replayTime ?? r.track.first.time;
+        const sampleTime =
+          r.replayTime === undefined
+            ? Math.min(t, r.track.upTime)
+            : (r.replayTime = Math.min(r.track.upTime, r.replayTime + 1000 * inputStep));
+        r.finalSampled = r.track.upTime <= sampleTime;
+        r.inputTime = sampleTime;
+        // The finger moves in real time even when the cloth runs in slow motion
+        // or a busy GPU caps the number of physical substeps. Keep the existing
+        // acceleration bound stable by integrating that input interval in small steps.
+        // Frames without a physical substep still count toward the finger's
+        // elapsed time. Bound resumption after a long background/GPU stall.
+        const elapsed = Math.min(0.1, Math.max(0, (sampleTime - inputFrom) / 1000));
+        const slices = Math.max(1, Math.ceil(elapsed / Q - 1e-6));
+        if (elapsed > 0) {
+          // The camera is fixed during this synchronous input batch. Reuse its
+          // matrices for every finger sample instead of inverting them repeatedly.
+          view ??= A(this.camera, this.width / this.height);
+          for (let j = 0; j < slices; j++) {
+            const at = sampleTime - 1000 * elapsed * (1 - (j + 1) / slices);
+            const point = this.planePoint(r, r.track.at(at), view);
+            r.hand.step(elapsed / slices, point ? w(point, r.downPoint) : [0, 0, 0]);
+          }
+        }
+        r.track.prune(sampleTime);
+        (this.interaction.setTarget(r.hand.target, r.slot), this.interaction.setPinch(r.hand.pinch, r.slot));
       }
     }
     updateAnchors() {
@@ -15741,7 +16008,8 @@ const Q = Dt.h,
         return;
       }
       let t = this.speedProbe,
-        n = (this.probeSteps + e) * Q;
+        n = (this.probeSteps + e) * Q,
+        epoch = this.releaseEpoch;
       ((this.probeSteps = 0), (this.probeBusy = !0));
       let r = this.device.createCommandEncoder({ label: `restProbe` });
       (r.copyBufferToBuffer(this.solver.counters, 0, t, 0, 16),
@@ -15752,11 +16020,17 @@ const Q = Dt.h,
             let e = t.getMappedRange(),
               r = new Float32Array(e)[2],
               i = new Uint32Array(e, 0, 2),
-              a = i[0] + i[1];
+              counts = [i[0], i[1]],
+              a = counts[0] + counts[1];
+            t.unmap();
+            this.probeBusy = !1;
+            if (epoch !== this.releaseEpoch) return;
+            const ruptures = Math.max(0, counts[0] - this.damageCounts[0]);
+            const pulledOut = Math.max(0, counts[1] - this.damageCounts[1]);
+            this.damageCounts = counts;
+            if (ruptures || pulledOut) X({ type: `tear`, ruptures, pulledOut });
             if (
-              (t.unmap(),
-              a !== this.topologyEvents && ((this.topologyEvents = a), this.topology.request()),
-              (this.probeBusy = !1),
+              (a !== this.topologyEvents && ((this.topologyEvents = a), this.topology.request()),
               this.grips.size > 0 || this.asleep || this.stage)
             ) {
               this.restFor = 0;
@@ -15773,12 +16047,23 @@ const Q = Dt.h,
       In.requestAnimationFrame((e) => this.frame(e));
       let t = Math.max(0, (e - this.lastFrame) / 1e3),
         n = Math.min(0.1, t);
-      if (this.inFlight || (!this.asleep && (e - this.lastPresent) / 1e3 < 0.03133333333333333)) return;
+      // Spend frames where they matter: direct interaction can run at 60 Hz. The GPU queue
+      // still gates every frame, and the solver retains its fixed 120 Hz timestep.
+      const interacting = this.down.size || this.strokes.size || this.claws.size || this.fists.length;
+      const interval = interacting ? 1000 / 60 - 2 : 1000 / 30 - 2;
+      if (this.inFlight || (!this.asleep && !this.paused && e - this.lastPresent < interval)) return;
+      const workStarted = performance.now();
+      const measureWork =
+        interacting && this.visible && !this.paused && !this.stage && !this.recorder && !this.captureWanted;
       ((this.lastFrame = e),
-        (this.windLevel > 0 || this.fists.length > 0 || this.claws.size > 0) && !this.stage && this.wake());
+        (this.windLevel > 0 || this.fists.length > 0 || this.claws.size > 0) &&
+          !this.stage &&
+          !this.paused &&
+          this.wake());
       let r = 0;
       if (
         (this.visible &&
+          !this.paused &&
           !this.asleep &&
           ((this.simBacklog += n * this.timeScale),
           (r = Math.floor(this.simBacklog / Q)),
@@ -15791,14 +16076,15 @@ const Q = Dt.h,
       let i = r > 0 && this.acoustic?.begin() ? this.acoustic : null,
         a = Rn(e);
       for (let e = 0; e < r; e++) {
-        this.stage ? this.stage.substep(Q) : this.stepHandles(Q, a - 1e3 * n * (1 - (e + 1) / r));
+        this.stage ? this.stage.substep(Q) : this.stepHandles(Q, a - 1e3 * n * (1 - (e + 1) / r), n / r);
         let t = this.device.createCommandEncoder({ label: `substep` });
         (this.solver.encodeSubstep(t, this.substepIterations()), i?.record(t), this.device.queue.submit([t.finish()]));
       }
       if (i) {
         let e = n / r,
-          t = A(this.stage ? this.stage.camera : this.camera, this.width / this.height).viewProj;
-        i.end().then((n) => n && this.sendAcoustics(n.raw, n.count, e, t));
+          t = A(this.stage ? this.stage.camera : this.camera, this.width / this.height).viewProj,
+          epoch = this.releaseEpoch;
+        i.end().then((n) => n && epoch === this.releaseEpoch && this.sendAcoustics(n.raw, n.count, e, t));
       }
       (r > 0 && (this.probeRest(r), (this.statsDirty = !0)), (this.substepsDone += r));
       let o = this.device.createCommandEncoder({ label: `frame` }),
@@ -15813,7 +16099,16 @@ const Q = Dt.h,
         this.recorder?.frame(this.canvas, e),
         this.stage?.done && this.endExperience(!0, e),
         (this.inFlight = !0),
-        this.device.queue.onSubmittedWorkDone().then(() => (this.inFlight = !1)),
+        this.device.queue.onSubmittedWorkDone().then(
+          () => {
+            this.inFlight = !1;
+            if (measureWork && this.visible && !this.paused && !this.stage && !this.recorder) {
+              this.gpuFrameTime += Math.max(0, performance.now() - workStarted);
+              this.gpuFrameSamples++;
+            }
+          },
+          () => (this.inFlight = !1),
+        ),
         this.frameCount++,
         e - this.statsTime > 1e3)
       ) {
@@ -15822,17 +16117,23 @@ const Q = Dt.h,
           frameMs: (t * 1e3) / Math.max(1, this.frameCount),
           substepsPerFrame: this.substepsDone / Math.max(1, this.frameCount),
           simWallRatio: (this.substepsDone * Q) / t,
+          gpuFrameMs: this.gpuFrameSamples ? this.gpuFrameTime / this.gpuFrameSamples : 0,
+          gpuSamples: this.gpuFrameSamples,
         }),
           (this.frameCount = 0),
           (this.substepsDone = 0),
+          (this.gpuFrameTime = 0),
+          (this.gpuFrameSamples = 0),
           (this.statsTime = e));
       }
     }
     // stats to the page, with the solver's damage counters (yarns ruptured, yarns pulled out of the weave)
     sendStats(e = {}) {
       this.statsDirty = !1;
+      const epoch = this.releaseEpoch;
       u(this.device, this.solver.counters, 8).then(
         (t) => {
+          if (epoch !== this.releaseEpoch) return;
           let n = new Uint32Array(t);
           X({ type: `stats`, stats: { ...e, ruptures: n[0], pulledOut: n[1], asleep: this.asleep } });
         },
@@ -15852,12 +16153,12 @@ const Q = Dt.h,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         });
       (e.copyTextureToBuffer({ texture: t }, { buffer: a, bytesPerRow: i, rowsPerImage: r }, [n, r, 1]),
-        (this.capturePending = { buffer: a, bytesPerRow: i, width: n, height: r }));
+        (this.capturePending = { id: this.captureWanted.id, buffer: a, bytesPerRow: i, width: n, height: r }));
     }
     captureIfRequested() {
       let e = this.capturePending;
       if (!e) return;
-      ((this.capturePending = null), (this.captureWanted = !1));
+      ((this.capturePending = null), (this.captureWanted = null));
       let t = this.canvasFormat === `bgra8unorm`;
       e.buffer
         .mapAsync(GPUMapMode.READ)
@@ -15876,9 +16177,9 @@ const Q = Dt.h,
           );
         })
         .then(
-          (e) => X({ type: `capture`, blob: e }),
+          (blob) => X({ type: `capture`, id: e.id, blob }),
           (t) => {
-            (console.warn(`capture failed:`, t?.name, t?.message), X({ type: `capture`, blob: null }));
+            (console.warn(`capture failed:`, t?.name, t?.message), X({ type: `capture`, id: e.id, blob: null }));
             try {
               e.buffer.destroy();
             } catch {}
@@ -15897,14 +16198,16 @@ const Q = Dt.h,
         e && (await e.stop());
       }
     }
-    capture() {
-      ((this.captureWanted = !0), (this.dirty = !0));
+    capture(id) {
+      // A newer request may replace an unrendered one; in-flight readbacks keep their own ID.
+      ((this.captureWanted = { id }), (this.dirty = !0));
     }
     setVisible(e) {
-      ((this.visible = e), e || (this.releaseAll(), (this.simBacklog = 0)), (this.dirty = !0));
+      ((this.visible = e), e || (this.releaseAll(!0), (this.simBacklog = 0)), (this.dirty = !0));
     }
     async runSubsteps(e) {
       for (let t = 0; t < e; t++) {
+        if (this.paused) return;
         this.stepHandles(Q, Rn(performance.now()));
         let e = this.device.createCommandEncoder({ label: `devSubstep` });
         (this.solver.encodeSubstep(e, this.substepIterations()),
@@ -15976,6 +16279,8 @@ const Q = Dt.h,
           rested: this.rested,
           wind: this.windLevel,
           timeScale: this.timeScale,
+          paused: this.paused,
+          camera: { ...this.camera, target: [...this.camera.target] },
           pins: [...this.grips.values()].filter((e) => e.pinned).length,
           fists: this.fists.length,
           bodies: this.body.count,
@@ -16022,6 +16327,15 @@ In.onmessage = (t) => {
     case `orbit`:
       $.orbit(n.yaw, n.pitch);
       break;
+    case `zoom`:
+      $.zoom(n.deltaY);
+      break;
+    case `camera`:
+      $.setCamera(n.preset);
+      break;
+    case `pause`:
+      $.setPaused(n.paused);
+      break;
     case `print`:
       $.ready && ($.renderer.setPrint(n.bitmap), ($.dirty = !0), n.bitmap?.close());
       break;
@@ -16041,7 +16355,7 @@ In.onmessage = (t) => {
       $.setTimeScale(n.scale);
       break;
     case `capture`:
-      $.capture();
+      $.capture(n.id);
       break;
     case `record`:
       $.record(n.action);

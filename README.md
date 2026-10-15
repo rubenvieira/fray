@@ -8,19 +8,33 @@ tear is not a texture effect but yarns breaking, slipping out of the weave and f
 
 Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a fresh sheet.
 
-- **Tools** (tool button, or keys `1`-`5`): the **hand** grips and pulls; the **knife** (`K`) slashes,
+- **Explore** opens three ready-to-play studies: **Ribbons in motion** (satin, knife, breeze, slow
+  motion), **Storm study** (gauze, claw, gale), and **Golden hour** (lamé, hand, breeze, slow motion).
+  Each starts a fresh sheet and clears the current photo print. The guidance is a starting point;
+  you can change tools and effects or dismiss it whenever you like.
+- **Frame a moment** pauses the cloth while you compose a shot. Drag to orbit, scroll or pinch to
+  zoom, and try Front, Angle, Detail, or Fit. **Capture frame** exports the image without the score
+  overlay. **Back to play** or `Esc` resumes the fabric; `Space` toggles framing when the canvas
+  has focus. Pins stay anchored when you change tools, frame a shot, or switch browser tabs.
+- **Collection** keeps up to 12 snapshots or frames in this browser using IndexedDB. Choose
+  **Keep in collection** in an image preview to save it; reopening the page preserves the pieces.
+  Open a piece to download or share it, or remove it with the inline confirmation. Saving a new
+  piece never evicts an existing one. Video clips use the existing download/share flow.
+- **Tools** (always visible in the bottom toolbar, or keys `1`-`5`): the **hand** grips and pulls; the **knife** (`K`) slashes,
   cutting every yarn crossing along the stroke in weave space so the slit is continuous however fast
   you move; the **claw** (`C`) drags three sharp points that pierce the weave and ladder it; the
   **fist** (`B`) punches a blunt sphere down through the sheet where you click, tenting it until it
   rips; the **pin** (`P`) holds a point so one mouse can stretch the cloth between pin and hand (pin
   it again to let go).
-- **Effects** (same menu): **wind** (`W`: off, breeze, gale) gusts across the sheet so torn strips
+- **Effects** (Effects menu): **wind** (`W`: off, breeze, gale) gusts across the sheet so torn strips
   flutter; **slow motion** (`T`) runs the simulation at a fifth of real time; **shake** (`X`) throws
   the sheet.
-- **Orbit**: right-drag or the arrow keys turn the camera; scroll zooms.
-- **Print a photo** (eye menu, or drop / paste an image): the image is dyed onto the yarns of the
+- **Orbit**: right-drag or the arrow keys turn the camera; scroll zooms. The **View** buttons under
+  Fabric also rotate and zoom. On touch screens, use two fingers to orbit and pinch to zoom; one
+  finger uses your current tool. After a camera gesture, lift both fingers before tearing again.
+- **Print a photo** (Fabric menu, or drop / paste an image): the image is dyed onto the yarns of the
   sheet, cover-fit, and never leaves your browser. Then rip it.
-- **Fabrics** (eye menu, or `F` to cycle): **tartan** (2/2 worsted wool twill with a Royal
+- **Fabrics** (Fabric menu, or `F` to cycle): **tartan** (2/2 worsted wool twill with a Royal
   Stewart-style sett, soft and hairy), **satin** (5-harness crimson silk: glossy floats, rips run
   straight), **linen** (ecru plain-weave canvas), **burlap** (plain-weave jute hessian: coarse, open,
   brittle, frays a lot), **chiffon** (sheer silk crepe, tears like tissue), **gauze** (open
@@ -32,10 +46,14 @@ Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a 
 - **Record** (dock button or `V`): records a clip of up to 20 seconds, with the tearing sound, as an
   MP4 (H.264 + AAC, the format X accepts), then offers it in the sheet to save, share natively on
   phones, or post (X's web intent can't attach a file, so you save and add it to the post).
-- **Share** (dock button or `S`): grabs the frame, composes a 1200x675 card with your score, time,
+- **Save / share** (toolbar button or `S`): grabs the frame, composes a 1200x675 card with your score, time,
   fabric and verdict, and offers Post on X (pre-written text), the native share sheet with the image
   on phones, or saving the PNG. `R` resets, `Esc` closes.
-- The eye menu also hides the "Smilie" experience.
+- **Sound** (speaker button or `M`): mute or unmute; the preference is remembered on this browser.
+- **How to play** (header button or `?`): tool guidance, camera controls, and keyboard shortcuts.
+  Menus support arrow keys and Home/End; Escape closes menus and dialogs.
+- The Fabric menu also includes the "Smilie" experience. Changing fabric starts a fresh sheet;
+  finish an active recording before switching.
 
 The simulation core descends from [denim.scottsun.io](https://denim.scottsun.io) (a denim tear
 simulation, reproduced from its deployed build); the denim preset is kept in the code as the
@@ -53,15 +71,28 @@ npm install
 npm run dev        # http://localhost:5173
 npm run build      # production build → dist/
 npm run preview    # serve dist/
+npm test           # input, interaction, hand-motion, haptic and audio behavior tests
+npm run test:gpu   # optional software-WebGPU shader checks; requires Playwright
 ```
+
+The GPU checks compile the production grip, yarn-damage, and loose-thread shaders and run force and
+fibre-colour cases on SwiftShader. They validate GPU calculations, not phone frame rates. Use a locally
+installed `playwright` package, or set `PLAYWRIGHT_MODULE` to an existing Playwright module's absolute path.
 
 ## Project layout
 
 ```
-index.html                 page shell: loader, dock (fabrics/experience menu, share, knife, reset), score, share sheet
-src/style.css              all styling (Anton/Oswald display type, torn-paper clip-path logo, stitched loader)
+index.html                 page shell: material picker, tool palette, effects, score, help, loader, recovery and share dialogs
+src/style.css              responsive interface styling (Anton/Oswald type, material swatches, stitched loader and toolbar)
 src/main.js                main thread: canvas + OffscreenCanvas handoff, pointer/wheel/visibility plumbing,
-                           AudioContext + tear-sound engine (TearAudio), loader/status UI, experiences menu
+                           AudioContext + tear-sound engine (TearAudio), interface state, accessible menus and dialogs
+src/gestures.js            pointer routing: cloth manipulation, frame orbit, two-finger orbit and pinch zoom
+src/hand.js                acceleration-limited grip motion with discrete braking
+src/audio-preparation.js   tear-recording worker lifecycle and transferable channel copies
+src/audio-preparation-worker.js / src/tear-source.js  off-thread sample mixing, filtering and normalization
+src/tear-feedback.js       brief touch haptics driven by confirmed fabric separation
+src/render-budget.js       mobile render resolution with load thresholds, cooldown and gradual recovery
+src/collection.js          private IndexedDB snapshot collection, thumbnails, preview and removal controls
 src/worker.js              WebGPU engine (runs in a module Worker): cloth/thread solver, multigrid compute
                            pipelines, floor + fabric renderer, camera, the "Smilie" staged experience
 src/worklet.js             AudioWorkletProcessor `tear-voice`: granular tear-sound synthesis driven by
@@ -73,17 +104,33 @@ public/stage/smilie.clip   staged animation clip for the experience
 public/fabric_tear_sound_sample.mp3
 public/exprerience_sounds/ ambient loop + laugh used by the experience
 public/icon.svg, og.png, robots.txt
+tests/gestures.test.js     cloth/camera gesture transitions, cancellation, frame mode and wheel input
+tests/hand.test.js         grip settling, reversals and acceleration limits
+tests/grip-release.test.js immediate force release while topology cleanup completes
+tests/yarn-load-sharing.test.js  nonlinear crack-tip load transfer and cohesive softening
+tests/render-budget.test.js     render sizing, sustained load, recovery and capture reset
+tests/worker-interaction.test.js  async picking, stroke paths, releases, frame pacing and damage reporting
+tests/tear-feedback.test.js      touch-only fracture pulses, cancellation and release tails
+tests/worklet.test.js      fracture-energy audio, release decay, reset and worker reconnection
+tests/audio-preparation.test.js  sample-output parity, finite normalization and worker cleanup
 ```
 
 ## How it works
 
 1. `main.js` creates a `<canvas class="stage">`, transfers control to an `OffscreenCanvas` and posts it to the
-   worker together with a DPR-capped size (≤ 2M pixels, DPR ≤ 1.7).
+   worker together with a DPR-capped size (≤ 2M pixels, DPR ≤ 1.7). On touch devices, sustained active-frame
+   GPU load can reduce drawing dimensions to 70%; the solver and CSS touch coordinates stay unchanged.
+   Framing, photo capture and recording restore full drawing resolution.
 2. The worker requests a high-performance WebGPU adapter, checks required limits, loads `drape.bin`, the floor
    textures and compiles ~30 compute/render pipelines (progress is streamed back to the stitched loader).
 3. Pointer events (with coalesced moves) are forwarded with timestamps; the worker simulates the fabric, detects
    ruptures and pulled-out threads, and streams per-substep records over a `MessageChannel` straight into the
-   `tear-voice` AudioWorklet, which synthesises the tearing sound from grains of the recorded sample.
+   `tear-voice` AudioWorklet, which synthesises the tearing sound from grains of the recorded sample. A separate,
+   short-lived worker prepares that sample so the first touch does not block while audio is normalized.
+   Hand targets follow elapsed pointer time, including in slow motion, with bounded acceleration and small
+   steps through the recorded path. The cloth solver keeps its fixed physical timestep. A brief touch intent
+   window distinguishes one-finger manipulation from a pinch; animation frames keep that deadline responsive
+   when the browser delays touch-start timers.
 4. The "Smilie" experience lazily fetches the GLB + clip, plays an ambient loop and a laugh, and the worker
    reacts to the laugh's loudness envelope.
 5. The share card: the worker copies the frame's canvas texture to a buffer inside the frame's own
