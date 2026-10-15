@@ -96,7 +96,8 @@ npm run test:gpu   # optional WebGPU checks: yarn mechanics, fibre colour and ai
 The GPU checks compile the production grip, yarn-damage, loose-thread, fringe, tail preparation,
 mount, floor and airflow shaders and run force, fibre-colour and aerodynamic cases on SwiftShader.
 Persistent-rod checks exercise colliding cache buckets, reordered runs, gravity, shared airflow,
-release, fixed roots, segment lengths, pause/reset, energy decay and slack-bridge arc length.
+release, growing frays at either held end, inherited release velocity, fixed roots, segment lengths,
+pause/reset, energy decay and slack-bridge arc length.
 Fringe cases preserve source yarn dyes and reject broken-end tufts on continuing yarns.
 Airflow cases cover two-sided and edge-on cloth,
 porosity, partial tears, free strands, pinned/retired nodes, overlapping fans, oblique aiming at raised
@@ -204,12 +205,16 @@ tests/audio-preparation.test.js  sample-output parity, finite normalization and 
    Each fabric ships its settled rest state (`public/drape*.bin`); without one the engine warm-starts from
    the denim's drape and settles briefly.
 
-Free-tail reconstruction retains position and velocity by material yarn and held crossing, rather
-than the temporary GPU run-list order. It solves a material-aware gravity/airflow equilibrium,
+Free-tail reconstruction retains position and velocity by material yarn and cut end, rather
+than the temporary GPU run-list order or a retreating held crossing. As a tear exposes more yarn,
+the existing strand is resampled by material distance from its cut end; new material enters at the
+root without resetting the hanging bend. Newly released ends inherit the mechanical lattice's
+velocity. A 32-byte-per-node GPU snapshot supplies positions and velocities within the existing
+ten-storage-buffer requirement. It solves a material-aware gravity/airflow equilibrium,
 then integrates a damped bending mode and projects segment lengths and existing cloth/floor
 contacts. Newly released ends start along the yarn exit. Physical time governs this motion, so
 slow motion, pause and camera framing remain consistent. Measured tail motion participates in
-the sleep check; Reset clears the approximately 10 MB bounded history cache.
+the sleep check from actual point displacement; Reset clears the approximately 10 MB bounded history cache.
 
 These are local appearance/reconstruction fits, not measured fibre properties. The mechanical
 lattice continues to carry yarn loads and determine rupture/pull-out. Reconstructed tails and

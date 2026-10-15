@@ -15,7 +15,7 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
     });
   const buffers = [
     make(464, true),
-    make(16),
+    make(32), // one position, then its actual solver velocity
     make(32),
     make(16),
     make(320),
@@ -69,7 +69,7 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
     v ^= v >>> 16;
     return v >>> 0;
   };
-  const slotFor = (yarn) => hash(((yarn << 5) | 1) ^ hash(39)) & 16383;
+  const slotFor = (yarn) => hash(((yarn << 5) | 1) ^ hash(70)) & 16383;
   let collidingYarn = -1;
   for (let yarn = 0; yarn < 65536; yarn++)
     if (yarn !== 10 && slotFor(yarn) === slotFor(10)) {
@@ -85,19 +85,20 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
   let time = 0,
     frame = 0;
   const states = [];
-  async function step({ dt = 1 / 30, reverse = false, wind = 0, material = 2 } = {}) {
+  async function step({ dt = 1 / 30, reverse = false, wind = 0, material = 2, velocity = [0, 0, 0] } = {}) {
     time += dt;
     const ordered = reverse ? [...rods].reverse() : rods;
     const records = new Uint32Array(8),
       geo = new Float32Array(80);
     ordered.forEach((r, i) => {
-      records.set([128, (40 << 16) | r.yarn, 30, 0], 4 * i);
+      records.set([r.heldB ? 32 : 128, ((r.pos ?? 40) << 16) | r.yarn, r.n ?? 30, 0], 4 * i);
       geo.set([0, 39, -1, r.len], 40 * i);
       geo.set([...r.q, 0], 40 * i + 28);
-      geo.set([1, 0, 0, 0], 40 * i + 32);
+      geo.set([r.heldB ? -1 : 1, 0, 0, 0], 40 * i + 32);
     });
     ru[27] = material;
     device.queue.writeBuffer(buffers[0], 0, render);
+    device.queue.writeBuffer(buffers[1], 0, new Float32Array([0, 0, 0, 0, ...velocity, 0]));
     device.queue.writeBuffer(buffers[2], 0, records);
     device.queue.writeBuffer(buffers[3], 0, new Uint32Array([2, 0, 0, 0]));
     device.queue.writeBuffer(buffers[4], 0, geo);
@@ -161,12 +162,54 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
       Math.abs(released[10][65] - calm[10][65]) < Math.abs(blown[10][65] - calm[10][65]),
       "wind release returns toward rest",
     );
+    // Fifty percent more yarn comes free at a retreating held crossing. The
+    // cut end is unchanged, so its bent material must not restart as a line.
+    Object.assign(rods[0], { pos: 25, n: 45, len: 0.045, q: [-0.015, 0, 0] });
+    const grown = await step({ dt: 1e-5, reverse: true });
+    assert(
+      grown[10][66] < released[10][66] * 0.4,
+      "growing fray retains its hanging bend: " +
+        JSON.stringify({ before: released[10].slice(64, 67), after: grown[10].slice(64, 67) }),
+    );
+    const growthCounts = new Uint32Array((await read(buffers[6])).buffer);
+    assert(
+      growthCounts[1] === 0 && growthCounts[3] === 0,
+      "releasing crossings reuses history without a cache fallback or newborn reset",
+    );
+    for (let i = 0; i < 60; i++) await step({ reverse: i % 2 === 0 });
+    const settledGrowth = await step({ dt: 0 });
+    assert(settledGrowth[10][66] < -0.002, "released material continues bending and settling at its new free length");
+    Object.assign(rods[0], { pos: 40, n: 30, len: 0.03, q: [0, 0, 0] });
     // Reset clears the complete cache; the same yarn id starts cleanly again.
     const clear = device.createCommandEncoder();
     clear.clearBuffer(buffers[10]);
     device.queue.submit([clear.finish()]);
     const reset = await step({ dt: 0 });
     assert(JSON.stringify(reset) === JSON.stringify(born), "reset cannot inherit a previous torn sheet's motion");
+    // The other held side must preserve the same material continuity, too.
+    rods[0].heldB = true;
+    for (let i = 0; i < 90; i++) await step();
+    const beforeReverseGrowth = await step({ dt: 0 });
+    Object.assign(rods[0], { n: 45, len: 0.045, q: [0.015, 0, 0] });
+    const reverseGrowth = await step({ dt: 1e-5 });
+    assert(reverseGrowth[10][66] < beforeReverseGrowth[10][66] * 0.4, "growth preserves history at either held side");
+    // Release momentum comes from the mechanical lattice, including on the
+    // first frame when no positional history exists yet.
+    const clearAgain = device.createCommandEncoder();
+    clearAgain.clearBuffer(buffers[10]);
+    device.queue.submit([clearAgain.finish()]);
+    await step({ dt: 0, velocity: [0.03, 0.08, -0.04] });
+    const memory = new Float32Array((await read(buffers[10])).buffer);
+    const ids = new Uint32Array(memory.buffer);
+    let movingSlot = -1;
+    for (let s = 0; s < memory.length / 148; s++) if (ids[s * 148 + 2] === 10 << 5) movingSlot = s;
+    assert(movingSlot >= 0, "released reverse-side strand has a persistent record");
+    for (let i = 0; i <= 16; i++)
+      for (let k = 0; k < 3; k++)
+        assert(
+          Math.abs(memory[movingSlot * 148 + 80 + 4 * i + k] - [0.03, 0.08, -0.04][k]) < 1e-6,
+          "newly freed yarn inherits solver velocity",
+        );
     // Compile and execute scalar bounds against the exact production helpers.
     const helpers = await pipeline("bending and bridge invariants", responseCode, "check");
     const output = make(64 * 16);
@@ -209,6 +252,8 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
       calmTip: calm[10].slice(64, 67),
       airTip: blown[10].slice(64, 67),
       releasedTip: released[10].slice(64, 67),
+      grownTip: grown[10].slice(64, 67),
+      reverseGrownTip: reverseGrowth[10].slice(64, 67),
     };
   } finally {
     buffers.forEach((b) => b.destroy());

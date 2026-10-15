@@ -4839,6 +4839,7 @@ fn tailRoot(ri: RunInfo, g: RunGeo, cA: vec3<f32>, cB: vec3<f32>) -> array<vec4<
 // per frame: each solved into TAIL_SEGS + 1 points that runCenter (thread_geom.wgsl) follows.
 
 @group(0) @binding(0) var<uniform> R: RenderU;
+// Snapshot of the solver's positions followed by its velocities (R.counts.x each).
 @group(0) @binding(1) var<storage, read> x: array<vec4<f32>>;
 @group(0) @binding(2) var<storage, read> runs: array<vec4<u32>>;
 @group(0) @binding(3) var<storage, read> threadCount: array<u32>;
@@ -4860,7 +4861,8 @@ override MAX_RUNS: u32 = 65536u;
 // another, so it bends as its fibres do side by side (count x a fibre's stiffness), under its own
 // weight, with the curl its spinning set in it. Where its shape would pass through the cloth it rests
 // on it instead, on the side it came from. Its material equilibrium drives a damped bending mode;
-// point positions and velocities survive run-list rebuilds by held-yarn identity.
+// point positions and velocities survive run-list rebuilds and retreating held
+// crossings by material yarn/cut-end identity.
 
 // bending stiffness of a cotton fibre: E (8 GPa) x I of its collapsed ribbon (20 x 7 um), N m^2
 const FIBRE_EI: f32 = 4.6e-12;
@@ -5007,18 +5009,31 @@ fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len:
   let slot = tailSlot(tailIdentity(ri), u32(TF.params.w) + 1u);
   if (slot < 0) { atomicAdd(&tailCount[1], 1u); }
   var dt = 0.0;
-  var rootV = vec3<f32>(0.0);
+  // The cloth's actual velocity also seeds newly freed yarn. A root moving
+  // through material as crossings release is not a physical velocity impulse.
+  let rootV = x[R.counts.x + root].xyz;
   var remembered = false;
+  var oldLength = len;
+  var oldRoot = q;
+  var oldPoints: array<vec3<f32>, TAIL_SEGS_1>;
+  var oldVelocity: array<vec3<f32>, TAIL_SEGS_1>;
   if (slot >= 0) {
     let prev = tailMemory[slot].root;
     dt = TF.params.y - prev.w;
-    remembered = prev.w >= 0.0 && dt >= 0.0 && dt <= 0.12
-      && abs(tailMemory[slot].shape.w - len) < 0.2 * len;
-    if (remembered && dt > 1e-7) { rootV = (q - prev.xyz) / dt; }
-    if (remembered && dt <= 1e-7) {
+    oldLength = tailMemory[slot].shape.w;
+    oldRoot = prev.xyz;
+    remembered = prev.w >= 0.0 && dt >= 0.0 && dt <= 0.12 && oldLength > 0.0;
+    if (remembered && dt <= 1e-7 && abs(oldLength - len) < 1e-8) {
       for (var i = 0u; i <= TAIL_SEGS; i++) { tails[k * TAIL_SEGS_1 + i] = tailMemory[slot].p[i]; }
       return;
     }
+    if (remembered) {
+      // Snapshot before writing: growing runs resample toward lower old indices.
+      for (var i = 0u; i <= TAIL_SEGS; i++) {
+        oldPoints[i] = tailMemory[slot].p[i].xyz;
+        oldVelocity[i] = tailMemory[slot].v[i].xyz;
+      }
+    } else { atomicAdd(&tailCount[3], 1u); }
   }
   let omega = 3.516 * sqrt(EI / mass) / (len * len);
   let wind = airflowAt(q + dir0 * (0.5 * len)) - rootV;
@@ -5093,11 +5108,26 @@ fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len:
     equilibrium += t[i] * h;
     var trial = equilibrium;
     var velocity = rootV;
+    var previousPoint = q + dir0 * (f32(i + 1u) * h);
     if (slot >= 0) {
       if (remembered) {
-        let old = tailMemory[slot].p[i + 1u].xyz;
-        let relV = tailMemory[slot].v[i + 1u].xyz - rootV;
-        let response = rodResponse(old - (equilibrium - rootV * dt), relV, omega, damping, dt);
+        // Material distance from the unchanged cut end, rather than a fraction
+        // of the new free length. Existing yarn retains its bend and momentum;
+        // only newly released material is inserted between root and old root.
+        let growth = len - oldLength;
+        let oldArc = f32(i + 1u) * h - growth;
+        var oldV = rootV;
+        if (oldArc < 0.0) {
+          let released = clamp(f32(i + 1u) * h / max(growth, 1e-9), 0.0, 1.0);
+          previousPoint = mix(q - rootV * dt, oldRoot, released);
+          oldV = mix(rootV, oldVelocity[0], released);
+        } else {
+          let u = clamp(oldArc * f32(TAIL_SEGS) / oldLength, 0.0, f32(TAIL_SEGS));
+          let j = min(u32(floor(u)), TAIL_SEGS - 1u);
+          previousPoint = mix(oldPoints[j], oldPoints[j + 1u], u - f32(j));
+          oldV = mix(oldVelocity[j], oldVelocity[j + 1u], u - f32(j));
+        }
+        let response = rodResponse(previousPoint - (equilibrium - rootV * dt), oldV - rootV, omega, damping, dt);
         trial = equilibrium + response[0];
         velocity = rootV + response[1];
       } else {
@@ -5150,12 +5180,16 @@ fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len:
     }
     tails[b + i + 1u] = vec4<f32>(nxt, 0.0);
     if (slot >= 0) {
-      if (remembered) { velocity += (nxt - trial) / max(dt, 1e-7); }
+      if (remembered && dt > 1e-7) { velocity += (nxt - trial) / dt; }
       let tangent = normalize(nxt - p + vec3<f32>(1e-12, 0.0, 0.0));
       velocity -= tangent * dot(velocity - rootV, tangent);
       tailMemory[slot].p[i + 1u] = vec4<f32>(nxt, 0.0);
       tailMemory[slot].v[i + 1u] = vec4<f32>(velocity, 0.0);
-      atomicMax(&tailCount[2], u32(ceil(length(velocity - rootV) * 1000.0)));
+      // Sleep follows visible point motion; constrained internal velocities
+      // alone must not keep a settled strand and the whole sheet awake.
+      if (remembered && dt > 1e-7) {
+        atomicMax(&tailCount[2], u32(ceil(length((nxt - previousPoint) / dt - rootV) * 1000.0)));
+      }
     }
     p = nxt;
   }
@@ -6620,6 +6654,7 @@ var Fe = class {
   tailHistory;
   tailWindU;
   tailFrameU;
+  tailKinematics;
   airflowData = null;
   kappa;
   cellDirty;
@@ -6705,6 +6740,9 @@ var Fe = class {
       (this.tailHistory = a(e, `threadTailHistory`, TAIL_HISTORY_BYTES)),
       (this.tailWindU = a(e, `threadTailWind`, 160, i)),
       (this.tailFrameU = a(e, `threadTailFrame`, 512, i)),
+      // Positions followed by solver velocities: one binding keeps the tail
+      // pass within the existing ten-storage-buffer device requirement.
+      (this.tailKinematics = a(e, `threadTailKinematics`, 32 * c)),
       (this.runs = a(e, `threadRuns`, 16 * Oe)),
       (this.chunks = a(e, `threadChunks`, 1048576)),
       (this.runGeo = a(e, `threadRunGeo`, 160 * Oe)),
@@ -6815,7 +6853,7 @@ var Fe = class {
     ((this.cpipes.threadTail = ne.pipeline(`threadTail`)),
       (this.groups.threadTail = ne.bindGroup(`threadTail`, {
         0: this.renderU,
-        1: n.x,
+        1: this.tailKinematics,
         2: this.runs,
         3: this.threadCount,
         4: this.runGeo,
@@ -7655,6 +7693,8 @@ var Fe = class {
     this.device.queue.writeBuffer(this.tailFrameU, 0, p);
     if (this.airflowData) this.device.queue.writeBuffer(this.tailWindU, 0, this.airflowData);
     let _ = this.scene.nodeCount;
+    e.copyBufferToBuffer(this.solver.x, 0, this.tailKinematics, 0, 16 * _);
+    e.copyBufferToBuffer(this.solver.v, 0, this.tailKinematics, 16 * _, 16 * _);
     (e.clearBuffer(this.lists, 0, 16), e.clearBuffer(this.threadCount, 8, 4), e.clearBuffer(this.tailCount));
     let v = e.beginComputePass({ label: `renderPrep`, timestampWrites: a(0) }),
       y = (e, t) => {
