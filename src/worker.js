@@ -583,7 +583,7 @@ struct Yarn {
 };
 
 struct LayerMat {
-  // offset, nx, ny, unused
+  // offset, nx, ny, aerodynamic cover (f32 bits)
   lattice: vec4<u32>,
   yarn: array<Yarn, 2>,
   // shearStiffness, crossingFriction, crossingWrap, pitchU
@@ -11134,6 +11134,11 @@ fn dragSpanOn(owner: i32, f: u32) -> bool {
   return segActive(segs[2u * u32(owner) + f]);
 }
 
+fn dragSpanCover(owner: i32, f: u32) -> f32 {
+  if (!dragSpanOn(owner, f)) { return 0.0; }
+  return clamp(segs[2u * u32(owner) + f].intact, 0.0, 1.0);
+}
+
 fn dragNodeAt(l: u32, i: i32, j: i32) -> i32 {
   let L = P.layers[l].lattice;
   if (i < 0 || j < 0 || i >= i32(L.y) || j >= i32(L.z)) { return -1; }
@@ -11160,8 +11165,13 @@ fn airDragBlock(n: u32) -> Sym {
   if (mat.b.y <= 0.0) { return symZero(); }
   let i = i32(st.ijl & 0xFFFu);
   let j = i32((st.ijl >> 12u) & 0xFFFu);
+  // Open weaves leak air; a torn node only carries the area of surviving spans.
+  // Keep a small drag on isolated numerical nodes rather than a sheet-sized sail.
+  let surviving = 0.25 * (dragSpanCover(i32(n), 0u) + dragSpanCover(i32(n), 1u)
+    + dragSpanCover(dragNodeAt(l, i - 1, j), 0u) + dragSpanCover(dragNodeAt(l, i, j - 1), 1u));
+  let cover = bitcast<f32>(mat.lattice.w) * max(0.05, surviving);
   // c A / h with A the node's share of cloth area
-  let k = mat.b.y * mat.a.w * mat.b.x / P.hg.x;
+  let k = mat.b.y * mat.a.w * mat.b.x * cover / P.hg.x;
   let tu = dragTangent(n, l, i, j, 0u);
   let tv = dragTangent(n, l, i, j, 1u);
   let lu = length(tu);
@@ -11622,6 +11632,13 @@ function jt(e, t) {
     e.layers.forEach((e, t) => {
       let n = (32 + t * 112) / 4;
       ((i[n] = e.nodeOffset), (i[n + 1] = e.nx), (i[n + 2] = e.ny));
+      // Use yarn pitch before bundling: changing solver resolution must not
+      // change how much air passes between the threads. Cover squared is a
+      // porous-screen approximation, not a measured permeability coefficient.
+      const mat = e.material;
+      const pickCover = Math.min(1, (mat.yarns[0].width * (mat.yarns[0].yarnsPerSpan ?? 1)) / mat.pitchV);
+      const warpCover = Math.min(1, (mat.yarns[1].width * (mat.yarns[1].yarnsPerSpan ?? 1)) / mat.pitchU);
+      r[n + 3] = (1 - (1 - pickCover) * (1 - warpCover)) ** 2;
       for (let t = 0; t < 2; t++) {
         let i = e.material.yarns[t],
           a = n + 4 + t * 8;
@@ -13303,30 +13320,60 @@ struct BladeU {
 
 @group(0) @binding(10) var<uniform> BL: BladeU;
 
-// Wind (Engine.setWind): a pressure on every cloth node along the wind, gusting over space and time,
-// added to the external force at assembly. Pinned nodes and pieces that left the scene feel none.
+// Airflow shares the solver's implicit drag tensor (drag.wgsl). Its normal comes
+// only from connected yarns, so a slit never connects two unrelated cloth faces.
+// Moving the ambient air shifts 1/2 dx^T D dx to
+// 1/2 (dx - h u_air)^T D (dx - h u_air). The Hessian stays D; the
+// additional gradient is -D h u_air. Assembly and line search use the same
+// quadratic. Cloth entrained in the air feels no further aerodynamic force.
 struct WindU {
-  // direction (xyz, unit), pressure (Pa)
+  // direction (xyz, unit), current speed (m/s)
   dir: vec4<f32>,
-  // time (s), gust length (m), unused...
+  // time (s), gust length (m), local jet radius (m), local jet speed (m/s)
   params: vec4<f32>,
+  // Up to four air brushes: world position xyz, smoothly rising strength w.
+  jets: array<vec4<f32>, 4>,
 };
 
 @group(0) @binding(11) var<uniform> WD: WindU;
+@group(0) @binding(12) var<storage, read> segs: array<Seg>;
+
+fn airflowAt(p: vec3<f32>) -> vec3<f32> {
+  let t = WD.params.x;
+  let k = 6.2831853 / max(WD.params.y, 0.01);
+  // Coherent travelling eddies: neighbouring threads see neighbouring air,
+  // rather than independent random impulses. Time is the cloth's physical time.
+  let a = k * (p.x + 0.3 * p.y) - 2.1 * t;
+  let b = 0.53 * k * (p.y - 0.4 * p.x) + 1.3 * t;
+  let gust = 0.65 + 0.22 * sin(a) + 0.13 * sin(b);
+  let eddy = vec3<f32>(0.12 * sin(b), 0.18 * cos(a), 0.28 * sin(a + b) + 0.16 * cos(1.7 * b));
+  var air = WD.dir.w * (gust * WD.dir.xyz + eddy);
+  for (var j = 0u; j < 4u; j++) {
+    let jet = WD.jets[j];
+    if (jet.w <= 0.0) { continue; }
+    let delta = p - jet.xyz;
+    // Compact smooth footprint, spreading and losing speed as it rises.
+    let rise = max(0.0, delta.z);
+    let radius = max(WD.params.z, 0.001) + 0.18 * rise;
+    let r2 = dot(delta.xy, delta.xy) / (radius * radius);
+    let falloff = max(0.0, 1.0 - r2);
+    let height = 1.0 / (1.0 + 18.0 * rise * rise);
+    let spread = vec3<f32>(delta.xy / radius * 0.22, 1.0);
+    air += spread * (WD.params.w * jet.w * falloff * falloff * height);
+  }
+  // Overlapping brushes must not multiply the air speed without limit.
+  return air * min(1.0, 12.0 / max(length(air), 1e-6));
+}
 
 @compute @workgroup_size(128)
 fn windTerms(@builtin(global_invocation_id) gid: vec3<u32>) {
   let n = gid.x;
-  if (n >= P.counts.x || WD.dir.w <= 0.0) { return; }
+  if (n >= P.counts.x) { return; }
   if ((nodes[n].flags & 1u) != 0u || x[n].w > 1.5) { return; }
-  let p = x[n].xyz;
-  let t = WD.params.x;
-  let k = 6.2831853 / max(WD.params.y, 0.01);
-  let gust = 0.55 + 0.25 * sin(k * (p.x + 0.3 * p.y) - 2.1 * t) + 0.2 * sin(0.53 * k * (p.y - 0.4 * p.x) + 1.3 * t) + 0.15 * sin(3.1 * k * p.x + 5.7 * t);
-  let L = P.layers[nodes[n].ijl >> 24u];
-  let area = L.a.w * L.b.x;
+  let air = airflowAt(x[n].xyz);
+  let g = -symMul(airDragBlock(n), P.hg.x * air);
   let b = 3u * n;
-  ext[b] = ext[b] + vec4<f32>(WD.dir.xyz * (WD.dir.w * area * max(gust, 0.0)), 0.0);
+  ext[b] = ext[b] + vec4<f32>(g, 0.0);
 }
 
 // a node's crossing (the centre of its span's bundle) in metres along the warp and the weft
@@ -13397,8 +13444,10 @@ var on = class {
   bladeU;
   wind;
   windU;
-  windData = /* @__PURE__ */ new Float32Array(8);
+  windData = /* @__PURE__ */ new Float32Array(24);
   windOn = !1;
+  windTarget = 0;
+  jetCount = 0;
   bladeData = /* @__PURE__ */ new Float32Array(4 + 8 * 16);
   bladeWords = /* @__PURE__ */ new Uint32Array(this.bladeData.buffer);
   strokes = [];
@@ -13418,13 +13467,13 @@ var on = class {
     let r = /* @__PURE__ */ new Uint32Array(12);
     n.field.forEach((e, t) => r.set([e.offset, e.K, e.M, 0], 4 * t));
     let s = o(e, `body.fieldU`, r, i),
-      c = new f(e, `body`, _ + nn);
+      c = new f(e, `body`, _ + Ct + nn);
     ((this.terms = c.pipeline(`bodyTerms`)),
       (this.pierce = c.pipeline(`pierce`)),
       (this.blade = c.pipeline(`slash`)),
       (this.bladeU = a(e, `bladeU`, 4 * this.bladeData.length, i)),
       (this.wind = c.pipeline(`windTerms`)),
-      (this.windU = a(e, `windU`, 32, i)),
+      (this.windU = a(e, `windU`, this.windData.byteLength, i)),
       (this.group = c.bindGroup(`body`, {
         0: t.simParams,
         1: this.uniform,
@@ -13438,6 +13487,7 @@ var on = class {
         9: t.fieldEvents,
         10: this.bladeU,
         11: this.windU,
+        12: t.segs,
       })),
       this.data.set([an.force, an.radius, 0, 0], 16),
       this.device.queue.writeBuffer(this.uniform, 0, this.data, 0, 20));
@@ -13512,18 +13562,33 @@ var on = class {
   }
   encode(e) {
     (this.count > 0 && e(this.terms, this.group, Math.ceil(this.solver.N / 128)),
-      this.windOn && e(this.wind, this.group, Math.ceil(this.solver.N / 128)));
+      (this.windOn || this.jetCount > 0) && e(this.wind, this.group, Math.ceil(this.solver.N / 128)));
   }
-  // wind: unit direction, pressure (Pa; 0 switches it off), gust length (m)
+  // Convert the existing pressure presets to air speed; ease changes over 0.25 s.
   setWind(e, t, n = 0.25) {
     let r = this.windData;
-    (r.set([e[0], e[1], e[2], t], 0),
+    (r.set(e, 0),
       (r[5] = n),
-      (this.windOn = t > 0),
+      (this.windTarget = Math.sqrt((2 * Math.max(0, t)) / 1.225)),
+      (this.windOn = this.windTarget > 0 || r[3] > 1e-3),
       this.device.queue.writeBuffer(this.windU, 0, r));
   }
-  tickWind(e) {
-    this.windOn && ((this.windData[4] = e), this.device.queue.writeBuffer(this.windU, 16, this.windData, 4, 4));
+  setAirJets(jets) {
+    this.jetCount = Math.min(4, jets.length);
+    this.windData.fill(0, 8);
+    this.windData[6] = 0.075;
+    this.windData[7] = 8;
+    for (let j = 0; j < this.jetCount; j++) this.windData.set([...jets[j].position, jets[j].strength], 8 + 4 * j);
+    this.device.queue.writeBuffer(this.windU, 0, this.windData);
+  }
+  tickWind(time, dt = 1 / 120) {
+    if (!this.windOn && !this.jetCount) return;
+    const d = this.windData;
+    d[3] += (this.windTarget - d[3]) * (1 - Math.exp(-Math.max(0, Math.min(0.1, dt)) / 0.25));
+    this.windOn = this.windTarget > 0 || d[3] > 1e-3;
+    if (!this.windOn) d[3] = 0;
+    d[4] = time;
+    this.device.queue.writeBuffer(this.windU, 0, d);
   }
   encodePierce(e) {
     this.sharp &&
@@ -15050,7 +15115,7 @@ var ClipRecorder = class {
 
 // settle substeps after a warm start from the denim's drape
 const WARM_SETTLE = 48;
-const TOOLS = [`hand`, `blade`, `claw`, `fist`, `pin`];
+const TOOLS = [`hand`, `blade`, `claw`, `fist`, `pin`, `air`];
 // fist: sphere radius, heights (m) and timing (s) of a punch; claw: tip depth under the sheet, gap, radius
 const FIST = {
   radius: 0.024,
@@ -15123,6 +15188,7 @@ const Q = Dt.h,
     // pointer-driven bodies: punches in flight and claws being dragged (bodyContact capsules)
     fists = [];
     claws = /* @__PURE__ */ new Map();
+    airJets = /* @__PURE__ */ new Map();
     pinSeq = 0;
     simTime = 0;
     // simulated seconds per real second (slow motion below 1)
@@ -15457,12 +15523,13 @@ const Q = Dt.h,
       return { origin: s, dir: E(w([o[0] / o[3], o[1] / o[3], o[2] / o[3]], s)) };
     }
     toolCursor() {
-      return { blade: `crosshair`, claw: `cell`, fist: `pointer`, pin: `copy` }[this.tool] ?? `grab`;
+      return { blade: `crosshair`, claw: `cell`, fist: `pointer`, pin: `copy`, air: `crosshair` }[this.tool] ?? `grab`;
     }
     setTool(e) {
       if (!TOOLS.includes(e) || e === this.tool) return;
       // hands let go; pins stay (they are the point of the pin tool)
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.claws.clear());
+      this.clearAir();
       for (let [e, t] of [...this.grips]) t.pinned || this.endGrip(e);
       this.down.clear();
       ((this.tool = e), this.ready && !this.stage && X({ type: `cursor`, cursor: this.toolCursor() }));
@@ -15473,6 +15540,39 @@ const Q = Dt.h,
       if (Math.abs(i[2]) < 1e-6) return null;
       let a = (n - r[2]) / i[2];
       return a < 0 ? null : [r[0] + a * i[0], r[1] + a * i[1], n];
+    }
+    // A small fan below the fabric. This needs no grip or async GPU pick, so
+    // sweeping across a hole still lifts whatever surviving threads catch it.
+    airPointer(event) {
+      if (event.phase === `up` || event.phase === `cancel`) {
+        this.airJets.delete(event.id);
+        this.body.setAirJets([...this.airJets.values()]);
+        return;
+      }
+      if (event.phase !== `down` && event.phase !== `move`) return;
+      let jet = this.airJets.get(event.id);
+      if (!jet && (event.phase !== `down` || this.airJets.size >= 4)) return;
+      const point = this.planeHit(event.x, event.y, -0.02);
+      if (!point || !point.every(Number.isFinite)) return;
+      if (jet) jet.target = point;
+      else this.airJets.set(event.id, { position: [...point], target: point, strength: 0 });
+      this.wake();
+      this.dirty = !0;
+    }
+    clearAir() {
+      if (!this.airJets.size) return;
+      this.airJets.clear();
+      this.body.setAirJets([]);
+    }
+    stepAir(dt) {
+      if (!this.airJets.size) return;
+      const follow = 1 - Math.exp(-dt / 0.035);
+      const attack = 1 - Math.exp(-dt / 0.06);
+      for (const jet of this.airJets.values()) {
+        for (let axis = 0; axis < 3; axis++) jet.position[axis] += follow * (jet.target[axis] - jet.position[axis]);
+        jet.strength += attack * (1 - jet.strength);
+      }
+      this.body.setAirJets([...this.airJets.values()]);
     }
     // Fist: a blunt sphere punched down through the sheet where the pointer hit, then drawn back up
     fistPointer(e) {
@@ -15651,7 +15751,7 @@ const Q = Dt.h,
       this.windLevel = Math.max(0, Math.min(2, e | 0));
       let t = [0, 6, 32][this.windLevel],
         n = -0.6,
-        r = [Math.cos(n), Math.sin(n), 0.12],
+        r = [Math.cos(n), Math.sin(n), 0.35],
         i = Math.hypot(...r);
       (this.body.setWind([r[0] / i, r[1] / i, r[2] / i], t), t > 0 && (this.wake(), (this.dirty = !0)));
     }
@@ -15770,6 +15870,10 @@ const Q = Dt.h,
         this.bladePointer(e);
         return;
       }
+      if (this.tool === `air`) {
+        this.airPointer(e);
+        return;
+      }
       if (this.tool === `claw`) {
         this.clawPointer(e);
         return;
@@ -15881,12 +15985,14 @@ const Q = Dt.h,
       this.grips.size === 0 && X({ type: `cursor`, cursor: `grab` });
     }
     releaseAll(preservePins = !1) {
+      this.clearAir();
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.body?.clearStrokes(), this.claws.clear());
       ((this.fists.length = 0), this.body && this.body.count > 0 && !this.stage && this.body.setPose([], Q));
       for (let [e, grip] of [...this.grips]) if (!preservePins || !grip.pinned) this.endGrip(e);
       this.down.clear();
     }
     cancelPicks() {
+      this.clearAir();
       // A pending screen-space hit belongs to the camera that submitted it.
       this.pickToken++;
       for (const id of this.picking.keys()) this.down.delete(id);
@@ -15931,7 +16037,7 @@ const Q = Dt.h,
       return this.refineSteps <= 0 ? 0 : (this.refineSteps--, Ot.newtonIterations);
     }
     stepHandles(e, t, inputStep = e / this.timeScale) {
-      ((this.simTime += e), this.stepProps(e), this.body.tickWind(this.simTime));
+      ((this.simTime += e), this.stepProps(e), this.stepAir(e), this.body.tickWind(this.simTime, e));
       let view;
       for (let [n, r] of [...this.grips]) {
         if (r.pinned) {
@@ -16057,14 +16163,15 @@ const Q = Dt.h,
         n = Math.min(0.1, t);
       // Spend frames where they matter: direct interaction can run at 60 Hz. The GPU queue
       // still gates every frame, and the solver retains its fixed 120 Hz timestep.
-      const interacting = this.down.size || this.strokes.size || this.claws.size || this.fists.length;
+      const interacting =
+        this.down.size || this.strokes.size || this.claws.size || this.fists.length || this.airJets.size;
       const interval = interacting ? 1000 / 60 - 2 : 1000 / 30 - 2;
       if (this.inFlight || (!this.asleep && !this.paused && e - this.lastPresent < interval)) return;
       const workStarted = performance.now();
       const measureWork =
         interacting && this.visible && !this.paused && !this.stage && !this.recorder && !this.captureWanted;
       ((this.lastFrame = e),
-        (this.windLevel > 0 || this.fists.length > 0 || this.claws.size > 0) &&
+        (this.body.windOn || this.airJets.size > 0 || this.fists.length > 0 || this.claws.size > 0) &&
           !this.stage &&
           !this.paused &&
           this.wake());
@@ -16286,6 +16393,7 @@ const Q = Dt.h,
           fabric: this.fabric,
           rested: this.rested,
           wind: this.windLevel,
+          airJets: this.airJets.size,
           timeScale: this.timeScale,
           paused: this.paused,
           camera: { ...this.camera, target: [...this.camera.target] },

@@ -337,6 +337,7 @@ const TOOL_GUIDES = {
   claw: [`Leave your mark.`, `Drag to rake three sharp trails through the weave.`],
   fist: [`Pack a little punch.`, `Click or tap the fabric to punch through it.`],
   pin: [`Hold it right there.`, `Tap to pin a point, then use Hand to pull. Tap a pin again to release it.`],
+  air: [`Let it breathe.`, `Hold and sweep to lift the fabric. Release and watch it settle.`],
 };
 function toast(message, duration = 3200) {
   clearTimeout(toastTimer);
@@ -611,7 +612,7 @@ for (let e of fabricButtons)
     toast(`Fresh ${FABRIC_NAMES[fabric]}. Make something of it.`);
   }));
 // ---------------------------------------------------------------- tools menu
-const TOOL_NAMES = { hand: `Hand`, blade: `Knife`, claw: `Claw`, fist: `Fist`, pin: `Pin` };
+const TOOL_NAMES = { hand: `Hand`, blade: `Knife`, claw: `Claw`, fist: `Fist`, pin: `Pin`, air: `Air` };
 function setTool(e) {
   if (!TOOL_NAMES[e]) return;
   M(performance.now());
@@ -1129,7 +1130,7 @@ function shortcut(e) {
     3: `claw`,
     4: `fist`,
     5: `pin`,
-    h: `hand`,
+    6: `air`,
     k: `blade`,
     c: `claw`,
     b: `fist`,

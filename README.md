@@ -20,14 +20,17 @@ Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a 
   **Keep in collection** in an image preview to save it; reopening the page preserves the pieces.
   Open a piece to download or share it, or remove it with the inline confirmation. Saving a new
   piece never evicts an existing one. Video clips use the existing download/share flow.
-- **Tools** (always visible in the bottom toolbar, or keys `1`-`5`): the **hand** grips and pulls; the **knife** (`K`) slashes,
+- **Tools** (always visible in the bottom toolbar, or keys `1`-`6`): the **hand** grips and pulls; the **knife** (`K`) slashes,
   cutting every yarn crossing along the stroke in weave space so the slit is continuous however fast
   you move; the **claw** (`C`) drags three sharp points that pierce the weave and ladder it; the
   **fist** (`B`) punches a blunt sphere down through the sheet where you click, tenting it until it
   rips; the **pin** (`P`) holds a point so one mouse can stretch the cloth between pin and hand (pin
-  it again to let go).
-- **Effects** (Effects menu): **wind** (`W`: off, breeze, gale) gusts across the sheet so torn strips
-  flutter; **slow motion** (`T`) runs the simulation at a fifth of real time; **shake** (`X`) throws
+  it again to let go); **Air** (`6`) lifts the cloth without gripping it. Hold and sweep to billow the
+  fabric or catch a torn ribbon, then release and let it settle. One finger uses the tool; two fingers
+  still orbit and pinch to zoom. Tool changes, camera gestures, framing and leaving the page stop the fans immediately.
+- **Effects** (Effects menu): **wind** (`W`: off, breeze, gale) travels through the folds in coherent
+  eddies, easing in and out instead of jolting the cloth. Open weaves pass more air; separated yarns
+  stop acting as intact sails. **Slow motion** (`T`) runs the simulation at a fifth of real time; **shake** (`X`) throws
   the sheet.
 - **Orbit**: right-drag or the arrow keys turn the camera; scroll zooms. The **View** buttons under
   Fabric also rotate and zoom. On touch screens, use two fingers to orbit and pinch to zoom; one
@@ -73,12 +76,16 @@ npm run dev        # http://localhost:5173
 npm run build      # production build → dist/
 npm run preview    # serve dist/
 npm test           # input, interaction, hand-motion, haptic and audio behavior tests
-npm run test:gpu   # optional software-WebGPU shader checks; requires Playwright
+npm run test:gpu   # optional WebGPU checks: yarn mechanics, fibre colour and airflow; requires Playwright
 ```
 
-The GPU checks compile the production grip, yarn-damage, and loose-thread shaders and run force and
-fibre-colour cases on SwiftShader. They validate GPU calculations, not phone frame rates. Use a locally
-installed `playwright` package, or set `PLAYWRIGHT_MODULE` to an existing Playwright module's absolute path.
+The GPU checks compile the production grip, yarn-damage, loose-thread and airflow shaders and run force,
+fibre-colour and aerodynamic cases on SwiftShader. Airflow cases cover two-sided and edge-on cloth,
+porosity, partial tears, free strands, pinned/retired nodes, overlapping fans, and cloth moving with or
+against the air. They validate GPU calculations, not phone frame rates. Use a locally installed
+`playwright` package, or set `PLAYWRIGHT_MODULE` to an existing Playwright module's absolute path.
+`CHROME_PATH` selects an installed Chrome executable. On Linux, use a short `TMPDIR` on a filesystem
+with space for Chrome's profile and socket.
 
 ## Project layout
 
@@ -148,8 +155,13 @@ tests/audio-preparation.test.js  sample-output parity, finite normalization and 
    GPU pick the hand uses, and queued to the next solver substep.
 8. The fist and claw are capsules on the body-contact system the staged creature uses (a blunt sphere
    animated down and up; three sharp capsules riding under the surface, which the pierce pass cuts
-   around). Pins are grips whose hand never moves. Wind is a compute pass adding a gusting pressure to
-   the external force at assembly; slow motion scales the simulated time per real second; shake
+   around). Pins are grips whose hand never moves. Wind and Air shift the existing implicit drag
+   potential into the moving air's frame, using normals from connected yarns and a porous-screen
+   approximation based on thread cover. Drag responds to relative velocity: cloth carried with the
+   airflow feels no further force, and faster cloth is slowed down. The added gradient uses the
+   same quadratic as the Newton line search; no second drag term or explicit velocity kick is added.
+   Breeze changes ease over 0.25 physical seconds; local fans have a smooth footprint, a 0.06 s
+   attack and a bounded combined speed. Slow motion scales the simulated time per real second; shake
    writes a smooth velocity field. The print is a texture sampled over the sheet in the surface pass
    and multiplied into the yarns' albedo.
 9. Fabrics are presets (`FABRICS` in `src/worker.js`): yarn mechanics, weave (twill repeat / warp-over), node

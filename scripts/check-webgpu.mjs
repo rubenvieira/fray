@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { checkAirflow } from "./airflow-checks.mjs";
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
@@ -13,9 +14,9 @@ const context = vm.createContext({
 });
 // Evaluating declarations creates no GPU device or scene; init is message-driven.
 vm.runInContext(source.replace(/^import .*;\n/gm, ""), context);
-const { common, field, grip, thread, appearance, materials } = vm.runInContext(
+const { common, field, grip, thread, appearance, materials, drag, body } = vm.runInContext(
   `({
-  common: _, field: ot, grip: R, appearance: oe,
+  common: _, field: ot, grip: R, appearance: oe, drag: Ct, body: nn,
   thread: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + fe + he,
   materials: Object.values(FABRICS).map(preset => preset.material)
 })`,
@@ -112,6 +113,7 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
 
 const browser = await chromium.launch({
   headless: true,
+  ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   args: ["--no-sandbox", "--enable-unsafe-webgpu", "--use-angle=swiftshader"],
 });
 try {
@@ -119,7 +121,7 @@ try {
   await page.route("**/*", (route) =>
     route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Fabric GPU checks</title>" }),
   );
-  await page.goto("http://localhost:9989/");
+  await page.goto("http://localhost:9989/", { waitUntil: "domcontentloaded", timeout: 60_000 });
   const timeout = setTimeout(() => {
     void browser.close();
   }, 60_000);
@@ -198,7 +200,12 @@ try {
         return { forces, colours, errors, description };
       },
       {
-        modules: { "yarn field": common + field, grip: common + grip, "loose threads": thread },
+        modules: {
+          "yarn field": common + field,
+          grip: common + grip,
+          "loose threads": thread,
+          airflow: common + drag + body,
+        },
         mechanicsCode,
         fibreCode,
         cases,
@@ -233,9 +240,14 @@ try {
     assert.ok(Math.abs(denimWeft[0] - 0.44) < 1e-6 && Math.abs(denimWeft[2] - 0.43) < 1e-6);
   }
   console.log(
-    `GPU checks passed: 3 production modules compiled, ${cases.length} force cases, ${fibreCases.length} fibre colours.`,
+    `GPU checks passed: 4 production modules compiled, ${cases.length} force cases, ${fibreCases.length} fibre colours.`,
   );
   console.log(`Adapter: ${result.description}. Correctness only; no real-phone performance claim.`);
+  const airflow = await page.evaluate(checkAirflow, common + drag + body);
+  assert.deepEqual(airflow.errors, []);
+  console.log(
+    `Airflow checks passed: ${airflow.cases} GPU cases (orientation, porosity, torn yarns, release, and relative motion).`,
+  );
 } finally {
   await browser.close();
 }
