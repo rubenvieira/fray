@@ -2633,6 +2633,8 @@ html, body { font-family: var(--pc-font); }
 .interaction-guide { display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 8px; margin-bottom: 10px; padding: 7px 14px; border-radius: 99px; background: var(--pc-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); text-shadow: none; }
 .guide-title { font: 600 12.5px/1.35 var(--pc-font); letter-spacing: 0; }
 .guide-description { margin: 0; color: var(--pc-muted); font: 400 12.5px/1.35 var(--pc-font); }
+.interaction-guide.air-active { box-shadow: 0 0 0 1px var(--pc-accent); }
+.interaction-guide.air-active .guide-title { color: var(--pc-accent); }
 .camera-hint { display: none; }
 .effect-summary, .experiment-active { background: var(--pc-panel) !important; border-color: var(--pc-line) !important; color: var(--pc-ink); font-family: var(--pc-font); border-radius: 14px; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 

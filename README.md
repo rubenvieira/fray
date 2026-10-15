@@ -26,7 +26,9 @@ Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a 
   **fist** (`B`) punches a blunt sphere down through the sheet where you click, tenting it until it
   rips; the **pin** (`P`) holds a point so one mouse can stretch the cloth between pin and hand (pin
   it again to let go); **Air** (`6`) lifts the cloth without gripping it. Hold and sweep to billow the
-  fabric or catch a torn ribbon, then release and let it settle. One finger uses the tool; two fingers
+  fabric or catch a torn ribbon, then release and let it settle. Cut a flap first for the clearest lift;
+  the mounted, intact sheet naturally resists billowing. The hint lights while air is flowing, and the
+  brush follows the visible folds even in angled views. One finger uses the tool; two fingers
   still orbit and pinch to zoom. Tool changes, camera gestures, framing and leaving the page stop the fans immediately.
 - **Effects** (Effects menu): **wind** (`W`: off, breeze, gale) travels through the folds in coherent
   eddies, easing in and out instead of jolting the cloth. Open weaves pass more air; separated yarns
@@ -81,7 +83,8 @@ npm run test:gpu   # optional WebGPU checks: yarn mechanics, fibre colour and ai
 
 The GPU checks compile the production grip, yarn-damage, loose-thread and airflow shaders and run force,
 fibre-colour and aerodynamic cases on SwiftShader. Airflow cases cover two-sided and edge-on cloth,
-porosity, partial tears, free strands, pinned/retired nodes, overlapping fans, and cloth moving with or
+porosity, partial tears, free strands, pinned/retired nodes, overlapping fans, oblique aiming at raised
+and hanging folds, and cloth moving with or
 against the air. They validate GPU calculations, not phone frame rates. Use a locally installed
 `playwright` package, or set `PLAYWRIGHT_MODULE` to an existing Playwright module's absolute path.
 `CHROME_PATH` selects an installed Chrome executable. On Linux, use a short `TMPDIR` on a filesystem
@@ -160,7 +163,8 @@ tests/audio-preparation.test.js  sample-output parity, finite normalization and 
    approximation based on thread cover. Drag responds to relative velocity: cloth carried with the
    airflow feels no further force, and faster cloth is slowed down. The added gradient uses the
    same quadratic as the Newton line search; no second drag term or explicit velocity kick is added.
-   Breeze changes ease over 0.25 physical seconds; local fans have a smooth footprint, a 0.06 s
+   Breeze changes ease over 0.25 physical seconds; local fans have a 9 cm smooth footprint radius,
+   projected along the pointer ray at each node's height, a 0.06 s
    attack and a bounded combined speed. Slow motion scales the simulated time per real second; shake
    writes a smooth velocity field. The print is a texture sampled over the sheet in the surface pass
    and multiplied into the yarns' albedo.

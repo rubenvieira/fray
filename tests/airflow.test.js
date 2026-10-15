@@ -18,7 +18,7 @@ const { Body, pack, bundle, materials } = vm.runInContext(
 function body() {
   const instance = Object.create(Body.prototype);
   Object.assign(instance, {
-    windData: new Float32Array(24),
+    windData: new Float32Array(40),
     windTarget: 0,
     windOn: false,
     jetCount: 0,
@@ -52,9 +52,11 @@ test("removing an Air pointer clears the actual uniform without disturbing the b
   b.setWind([1, 0, 0], 6);
   b.tickWind(0.1, 0.1);
   const breeze = Array.from(b.windData.slice(0, 6));
-  b.setAirJets([{ position: [0.1, -0.2, -0.02], strength: 0.7 }]);
+  b.setAirJets([{ position: [0.1, -0.2, -0.02], aim: [1.2, -0.3], strength: 0.7 }]);
   assert.equal(b.jetCount, 1);
   assert.ok(b.windData[11] > 0);
+  assert.ok(Math.abs(b.windData[24] - 1.2) < 1e-6);
+  assert.ok(Math.abs(b.windData[25] + 0.3) < 1e-6);
   b.setAirJets([]);
   assert.equal(b.jetCount, 0);
   assert.ok(b.windData.slice(8).every((value) => value === 0));

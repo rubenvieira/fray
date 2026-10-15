@@ -25,7 +25,7 @@ export async function checkAirflow(code) {
     x = storage(16 * N),
     dx = storage(16 * N);
   const ext = storage(48 * N),
-    wind = uniform(96),
+    wind = uniform(160),
     segs = storage(64 * N),
     probe = storage(64 * N);
   const readback = buffer(112 * N, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
@@ -86,6 +86,9 @@ fn airflowProbe(@builtin(global_invocation_id) id: vec3<u32>) {
       jet = true,
       jets = 1,
       ambient = 0,
+      height = 0,
+      jetOrigin = [0, 0, -0.02],
+      aim = [0, 0],
       motion,
     } = {}) {
       const params = new ArrayBuffer(400),
@@ -114,7 +117,7 @@ fn airflowProbe(@builtin(global_invocation_id) id: vec3<u32>) {
             b = (j - 1) * 0.01;
           nu[4 * n] = i | (j << 12);
           nu[4 * n + 1] = pinned ? 1 : 0;
-          positions.set(edge ? [0, a, b, retired ? 2 : 0] : [a, b, 0, retired ? 2 : 0], 4 * n);
+          positions.set(edge ? [0, a, b + height, retired ? 2 : 0] : [a, b, height, retired ? 2 : 0], 4 * n);
           for (let f = 0; f < 2; f++) {
             const offset = 8 * (2 * n + f);
             sf[offset] = 0.01;
@@ -122,9 +125,13 @@ fn airflowProbe(@builtin(global_invocation_id) id: vec3<u32>) {
             su[offset + 5] = (f === 0 ? i < 2 : j < 2) && !isolated && !(strand && f === 1) ? 1 : 0;
           }
         }
-      const wd = new Float32Array(24);
-      wd.set([0.8, -0.3, 0.35, ambient, 0, 0.25, 0.075, 8]);
-      if (jet) for (let j = 0; j < jets; j++) wd.set([0, 0, -0.02, 1], 8 + 4 * j);
+      const wd = new Float32Array(40);
+      wd.set([0.8, -0.3, 0.35, ambient, 0, 0.25, 0.09, 8]);
+      if (jet)
+        for (let j = 0; j < jets; j++) {
+          wd.set([...jetOrigin, 1], 8 + 4 * j);
+          wd.set(aim, 24 + 4 * j);
+        }
       device.queue.writeBuffer(P, 0, params);
       device.queue.writeBuffer(nodes, 0, nodeBytes);
       device.queue.writeBuffer(x, 0, positions);
@@ -156,6 +163,18 @@ fn airflowProbe(@builtin(global_invocation_id) id: vec3<u32>) {
     const flat = await run();
     check(flat.force[2] > 0, "an upward fan must lift the sheet, not push it down");
     near(flat.force[0], 0, "no invented tangential sheet force");
+    for (const height of [0.1, -0.12]) {
+      const aim = [1.2, 0.4],
+        rise = height + 0.02;
+      const jetOrigin = [-rise * aim[0], -rise * aim[1], -0.02];
+      const centered = await run({ height });
+      const aimed = await run({ height, jetOrigin, aim });
+      near(aimed.force[2], centered.force[2], "oblique brush stays centered at the fold height");
+      check(
+        (await run({ height, jetOrigin })).force[2] < centered.force[2] * 0.01,
+        "a flat-plane brush misses the same raised or hanging fold",
+      );
+    }
     near((await run({ edge: true })).force[2], 0, "an edge-on sheet lets this jet pass");
     const back = await run({ flip: true });
     near(back.force[2], flat.force[2], "both sides catch air equally");
@@ -194,7 +213,7 @@ fn airflowProbe(@builtin(global_invocation_id) id: vec3<u32>) {
         "overlapping air brushes stay bounded",
       );
     check(errors.length === 0, errors.join("\n"));
-    return { cases: 14, adapter: adapter.info.description || adapter.info.architecture, lift: flat.force[2], errors };
+    return { cases: 18, adapter: adapter.info.description || adapter.info.architecture, lift: flat.force[2], errors };
   } finally {
     resources.forEach((b) => b.destroy());
     device.destroy();

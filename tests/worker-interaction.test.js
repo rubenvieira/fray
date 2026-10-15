@@ -136,6 +136,7 @@ function fixture({ projected = false } = {}) {
       },
     },
   });
+  if (!projected) engine.ray = (x, y) => ({ origin: [x / 1000, y / 1000, 1], dir: [0, 0, -1] });
   engine.solver.encodeSubstep = () => steps.push(engine.simTime);
   function point(phase, x = 0, y = 0, time = now, id = 1) {
     engine.pointer({ phase, id, x, y, time, pointerType: "touch", width: 12, height: 12 });
@@ -166,7 +167,6 @@ test("Air lifts without gripping, follows a sweep smoothly, and stops supplying 
   const f = fixture();
   const writes = [];
   f.engine.body.setAirJets = (jets) => writes.push(plain(jets));
-  f.engine.planeHit = (x, y) => [x / 1000, y / 1000, -0.02];
   f.engine.setTool("air");
   f.point("down", 0, 0);
   f.engine.stepAir(1 / 120);
@@ -183,9 +183,46 @@ test("Air lifts without gripping, follows a sweep smoothly, and stops supplying 
   assert.deepEqual(writes.at(-1), [], "released air cannot restart itself");
 });
 
+test("Air follows the camera ray at raised and hanging folds without a surface pick", () => {
+  const f = fixture();
+  const origin = [0.3, 0.5, 0.8],
+    dir = [-0.2, -0.6, -0.7];
+  f.engine.ray = () => ({ origin, dir });
+  f.engine.setTool("air");
+  f.point("down");
+  const jet = f.engine.airJets.get(1);
+  for (const height of [-0.12, 0, 0.15]) {
+    const distance = (height - origin[2]) / dir[2];
+    for (let axis = 0; axis < 2; axis++)
+      assert.ok(
+        Math.abs(
+          jet.position[axis] + (height - jet.position[2]) * jet.aim[axis] - (origin[axis] + distance * dir[axis]),
+        ) < 1e-12,
+      );
+  }
+  f.engine.ray = () => ({ origin, dir: [0.2, 0.1, -1] });
+  f.point("move", 50, 0);
+  f.engine.stepAir(1 / 120);
+  assert.ok(jet.aim[0] < dir[0] / dir[2] && jet.aim[0] > -0.2, "aim eases with the swept position");
+  assert.equal(f.picks.length, 0);
+});
+
+test("Air ignores invalid or rearward camera rays", () => {
+  const f = fixture();
+  f.engine.setTool("air");
+  for (const dir of [
+    [1, 0, 0],
+    [0, 0, 1],
+    [NaN, 0, -1],
+  ]) {
+    f.engine.ray = () => ({ origin: [0, 0, 1], dir });
+    f.point("down");
+    assert.equal(f.engine.airJets.size, 0);
+  }
+});
+
 test("Air supports four independent fingers and cancellation removes only the released source", () => {
   const f = fixture();
-  f.engine.planeHit = (x, y) => [x / 1000, y / 1000, -0.02];
   f.engine.setTool("air");
   for (let id = 1; id <= 5; id++) f.point("down", id, 0, 1000, id);
   assert.equal(f.engine.airJets.size, 4);
@@ -211,7 +248,6 @@ test("tool changes, framing, backgrounding and camera changes stop Air while kee
     f.engine.body.setAirJets = (jets) => {
       sources = jets;
     };
-    f.engine.planeHit = () => [0, 0, -0.02];
     f.engine.setTool("air");
     f.point("down");
     f.engine.stepAir(1 / 120);

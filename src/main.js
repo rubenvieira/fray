@@ -337,7 +337,7 @@ const TOOL_GUIDES = {
   claw: [`Leave your mark.`, `Drag to rake three sharp trails through the weave.`],
   fist: [`Pack a little punch.`, `Click or tap the fabric to punch through it.`],
   pin: [`Hold it right there.`, `Tap to pin a point, then use Hand to pull. Tap a pin again to release it.`],
-  air: [`Let it breathe.`, `Hold and sweep to lift the fabric. Release and watch it settle.`],
+  air: [`Let it breathe.`, `Cut a flap, then hold to lift it. Release to let it fall.`],
 };
 function toast(message, duration = 3200) {
   clearTimeout(toastTimer);
@@ -516,8 +516,20 @@ const tearFeedback = createTearFeedback({
   vibrate: (duration) => navigator.vibrate?.(duration) ?? false,
 });
 let canvasAudioAbort;
+const airPointers = new Set();
+function updateAirHint() {
+  const active = currentTool === `air` && airPointers.size > 0;
+  document.querySelector(`.interaction-guide`).classList.toggle(`air-active`, active);
+  if (currentTool === `air`)
+    document.querySelector(`.guide-title`).textContent = active ? `Air flowing.` : TOOL_GUIDES.air[0];
+}
 function j(e, t) {
   let n = m.getBoundingClientRect();
+  if (currentTool === `air`) {
+    if (e === `down`) airPointers.add(t.pointerId);
+    if (e === `up` || e === `cancel`) airPointers.delete(t.pointerId);
+    updateAirHint();
+  }
   tearFeedback.pointer(e, t);
   C({
     type: `pointer`,
@@ -533,6 +545,8 @@ function j(e, t) {
   });
 }
 function cancelStagePointer(time) {
+  airPointers.clear();
+  updateAirHint();
   tearFeedback.reset();
   C({ type: `pointer`, phase: `cancel`, id: -1, preservePins: true, seq: k++, time: A(time), x: 0, y: 0 });
 }

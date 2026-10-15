@@ -13333,6 +13333,8 @@ struct WindU {
   params: vec4<f32>,
   // Up to four air brushes: world position xyz, smoothly rising strength w.
   jets: array<vec4<f32>, 4>,
+  // Camera-ray dx/dz, dy/dz. Project the brush onto each fold's own height.
+  aims: array<vec4<f32>, 4>,
 };
 
 @group(0) @binding(11) var<uniform> WD: WindU;
@@ -13352,13 +13354,14 @@ fn airflowAt(p: vec3<f32>) -> vec3<f32> {
     let jet = WD.jets[j];
     if (jet.w <= 0.0) { continue; }
     let delta = p - jet.xyz;
+    let across = delta.xy - delta.z * WD.aims[j].xy;
     // Compact smooth footprint, spreading and losing speed as it rises.
     let rise = max(0.0, delta.z);
     let radius = max(WD.params.z, 0.001) + 0.18 * rise;
-    let r2 = dot(delta.xy, delta.xy) / (radius * radius);
+    let r2 = dot(across, across) / (radius * radius);
     let falloff = max(0.0, 1.0 - r2);
     let height = 1.0 / (1.0 + 18.0 * rise * rise);
-    let spread = vec3<f32>(delta.xy / radius * 0.22, 1.0);
+    let spread = vec3<f32>(across / radius * 0.22, 1.0);
     air += spread * (WD.params.w * jet.w * falloff * falloff * height);
   }
   // Overlapping brushes must not multiply the air speed without limit.
@@ -13444,7 +13447,7 @@ var on = class {
   bladeU;
   wind;
   windU;
-  windData = /* @__PURE__ */ new Float32Array(24);
+  windData = /* @__PURE__ */ new Float32Array(40);
   windOn = !1;
   windTarget = 0;
   jetCount = 0;
@@ -13576,9 +13579,12 @@ var on = class {
   setAirJets(jets) {
     this.jetCount = Math.min(4, jets.length);
     this.windData.fill(0, 8);
-    this.windData[6] = 0.075;
-    this.windData[7] = 8;
-    for (let j = 0; j < this.jetCount; j++) this.windData.set([...jets[j].position, jets[j].strength], 8 + 4 * j);
+    this.windData[6] = AIR.radius;
+    this.windData[7] = AIR.speed;
+    for (let j = 0; j < this.jetCount; j++) {
+      this.windData.set([...jets[j].position, jets[j].strength], 8 + 4 * j);
+      this.windData.set(jets[j].aim ?? [0, 0], 24 + 4 * j);
+    }
     this.device.queue.writeBuffer(this.windU, 0, this.windData);
   }
   tickWind(time, dt = 1 / 120) {
@@ -15129,6 +15135,7 @@ const FIST = {
   clawGap: 0.007,
   clawRadius: 0.0015,
 };
+const AIR = { radius: 0.09, speed: 8, referenceZ: -0.02, follow: 0.035, attack: 0.06 };
 const Q = Dt.h,
   Rn = (e) => performance.timeOrigin + e,
   $ = new (class {
@@ -15541,8 +15548,9 @@ const Q = Dt.h,
       let a = (n - r[2]) / i[2];
       return a < 0 ? null : [r[0] + a * i[0], r[1] + a * i[1], n];
     }
-    // A small fan below the fabric. This needs no grip or async GPU pick, so
-    // sweeping across a hole still lifts whatever surviving threads catch it.
+    // Aim along the pointer ray, then let the shader evaluate the footprint at
+    // each node's height. A flat-plane aim missed raised folds in angled views.
+    // No grip or GPU pick is needed when sweeping across holes.
     airPointer(event) {
       if (event.phase === `up` || event.phase === `cancel`) {
         this.airJets.delete(event.id);
@@ -15552,10 +15560,17 @@ const Q = Dt.h,
       if (event.phase !== `down` && event.phase !== `move`) return;
       let jet = this.airJets.get(event.id);
       if (!jet && (event.phase !== `down` || this.airJets.size >= 4)) return;
-      const point = this.planeHit(event.x, event.y, -0.02);
-      if (!point || !point.every(Number.isFinite)) return;
-      if (jet) jet.target = point;
-      else this.airJets.set(event.id, { position: [...point], target: point, strength: 0 });
+      const { origin, dir } = this.ray(event.x, event.y);
+      if (![...origin, ...dir].every(Number.isFinite) || Math.abs(dir[2]) < 1e-6) return;
+      const distance = (AIR.referenceZ - origin[2]) / dir[2];
+      if (distance < 0) return;
+      const point = [origin[0] + distance * dir[0], origin[1] + distance * dir[1], AIR.referenceZ];
+      const aim = [dir[0] / dir[2], dir[1] / dir[2]];
+      if (jet) {
+        jet.target = point;
+        jet.targetAim = aim;
+      } else
+        this.airJets.set(event.id, { position: [...point], target: point, aim: [...aim], targetAim: aim, strength: 0 });
       this.wake();
       this.dirty = !0;
     }
@@ -15566,10 +15581,11 @@ const Q = Dt.h,
     }
     stepAir(dt) {
       if (!this.airJets.size) return;
-      const follow = 1 - Math.exp(-dt / 0.035);
-      const attack = 1 - Math.exp(-dt / 0.06);
+      const follow = 1 - Math.exp(-dt / AIR.follow);
+      const attack = 1 - Math.exp(-dt / AIR.attack);
       for (const jet of this.airJets.values()) {
         for (let axis = 0; axis < 3; axis++) jet.position[axis] += follow * (jet.target[axis] - jet.position[axis]);
+        for (let axis = 0; axis < 2; axis++) jet.aim[axis] += follow * (jet.targetAim[axis] - jet.aim[axis]);
         jet.strength += attack * (1 - jet.strength);
       }
       this.body.setAirJets([...this.airJets.values()]);
