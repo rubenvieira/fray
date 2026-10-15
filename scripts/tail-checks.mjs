@@ -227,11 +227,15 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
     );
     const freePaused = await step({ dt: 0 });
     assert(JSON.stringify(falling) === JSON.stringify(freePaused), "detached yarns freeze on pause");
-    rods[0].detached = false; rods[0].heldB = true;
-    await step({dt:1/120});
+    rods[0].detached = false;
+    rods[0].heldB = true;
+    await step({ dt: 1 / 120 });
     rods[0].detached = true;
-    const freeAgain = await step({dt:1/120});
-    assert(freeAgain[10][2] < falling[10][2] + .01, "a free fragment cannot inherit clamped-root correction velocity from a neighboring held run");
+    const freeAgain = await step({ dt: 1 / 120 });
+    assert(
+      freeAgain[10][2] < falling[10][2] + 0.01,
+      "a free fragment cannot inherit clamped-root correction velocity from a neighboring held run",
+    );
     for (let i = 0; i < 20; i++) await step({ dt: 1 / 120, wind: 8 });
     for (let i = 0; i < 80; i++) await step({ dt: 1 / 120 });
     const landed = await step({ dt: 1 / 120 });
@@ -239,6 +243,73 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
       landed[10].every((v, i) => i % 4 !== 2 || v >= -0.150001),
       "detached yarns collide with the floor",
     );
+    // The final crossing can let go at either end. It must release the same
+    // bent material, not replace it with a fresh straight fragment.
+    rf[113] = 0;
+    for (const heldB of [false, true])
+      for (const added of [0, 5]) {
+        const clearHandoff = device.createCommandEncoder();
+        clearHandoff.clearBuffer(buffers[10]);
+        device.queue.submit([clearHandoff.finish()]);
+        Object.assign(rods[0], { detached: false, heldB, pos: 40, n: 30, len: 0.03, q: [0, 0, 0.08] });
+        for (let i = 0; i < 90; i++) await step({ dt: 1 / 120 });
+        const held = (await step({ dt: 0 }))[10];
+        const meanVelocity = async (identity, cut) => {
+          const memory = (await read(buffers[10])).buffer;
+          const ids = new Uint32Array(memory),
+            values = new Float32Array(memory);
+          const slot = Array.from({ length: ids.length / 148 }, (_, i) => i).find(
+            (i) => ids[148 * i + 2] === identity && ids[148 * i + 3] === cut && values[148 * i + 7] >= 0,
+          );
+          assert(slot !== undefined, "material history exists for momentum measurement");
+          return [0, 1, 2].map(
+            (axis) =>
+              Array.from({ length: 17 }, (_, i) => values[148 * slot + 80 + 4 * i + axis]).reduce(
+                (sum, v) => sum + v,
+                0,
+              ) / 17,
+          );
+        };
+        const momentum = await meanVelocity((10 << 5) | Number(!heldB), heldB ? 39 : 70);
+        Object.assign(rods[0], {
+          detached: true,
+          pos: heldB ? 40 : 40 - added,
+          n: 30 + added,
+          len: 0.03 + added * 0.001,
+        });
+        const freed = (await step({ dt: 0 }))[10];
+        let displacement = 0;
+        for (let i = 0; i <= 16; i++)
+          for (let axis = 0; axis < 3; axis++)
+            displacement = Math.max(
+              displacement,
+              Math.abs(freed[4 * i + axis] - held[4 * (heldB ? i : 16 - i) + axis]),
+            );
+        if (!added) {
+          assert(
+            displacement < 2e-6,
+            `final crossing preserves bent yarn at either end: ${JSON.stringify({ heldB, displacement })}`,
+          );
+          const freedMomentum = await meanVelocity((10 << 5) | 16, 39);
+          assert(
+            momentum.every((v, axis) => Math.abs(v - freedMomentum[axis]) < 2e-5),
+            "release preserves average physical velocity without reversing it: " +
+              JSON.stringify({ heldB, momentum, freedMomentum }),
+          );
+        } else {
+          const cutPoint = heldB ? 16 : 0;
+          const cutError = Math.hypot(...[0, 1, 2].map((axis) => freed[4 * cutPoint + axis] - held[64 + axis]));
+          assert(
+            cutError < 3e-4,
+            "newly released material keeps the existing cut end continuous: " + JSON.stringify({ heldB, cutError }),
+          );
+        }
+        const afterRelease = await step({ dt: 1 / 120 });
+        assert(
+          Math.hypot(...[0, 1, 2].map((axis) => afterRelease[10][axis] - freed[axis])) > 1e-8,
+          "the former held root is free to move",
+        );
+      }
     // Compile and execute scalar bounds against the exact production helpers.
     const helpers = await pipeline("bending and bridge invariants", responseCode, "check");
     const output = make(64 * 16);
@@ -269,6 +340,25 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
         "only actually severed yarns receive end tufts; continuing bridges do not",
       );
       assert(arcRatio <= 1.00001 && arcRatio > 0.995, "a slack bridge spends its existing yarn length");
+      const drag = [0, 1e-6, 0.01, 1, 10, 100, 1000, 0.0006, 5, 0.05, 3, 60][i];
+      const dt = i === 7 ? 0 : 0.004 + 0.012 * i;
+      const first = drag ? -Math.expm1(-drag * dt) / drag : dt;
+      const second = drag ? (dt - first) / drag : 0.5 * dt * dt;
+      for (let axis = 0; axis < 3; axis++) {
+        const v = [0.03, 0.08, -0.000047][axis],
+          air = [0.2, 0, 0.1][axis],
+          gravity = axis === 2 ? -9.81 : 0;
+        const position = air * dt + (v - air) * first + gravity * second;
+        const velocity = air + (v - air) * Math.exp(-drag * dt) + gravity * first;
+        assert(
+          Math.abs(values[4 * (32 + i) + axis] - position) < 2e-6,
+          "free flight matches analytic drag/gravity position",
+        );
+        assert(
+          Math.abs(values[4 * (48 + i) + axis] - velocity) < 2e-6,
+          "free flight preserves tiny velocities and matches analytic drag/gravity velocity",
+        );
+      }
     }
     output.destroy();
     assert(errors.length === 0, errors.join("\n"));
@@ -277,6 +367,8 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
       bucketCollision: [10, collidingYarn],
       frames: frame,
       rods: 2,
+      releaseHandoffs: 4,
+      freeFlightCases: 12,
       errors,
       calmTip: calm[10].slice(64, 67),
       airTip: blown[10].slice(64, 67),

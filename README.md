@@ -15,7 +15,8 @@ Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a 
 Broken edges keep their yarn colours, including individual tartan stripes. Wool makes a crimped
 brush, jute keeps coarser ends, and silk/nylon shed finer filaments. A yarn that continues across an
 opening does not grow a second broken-end tuft at its root. Loose ends now lag, sway in Air/wind
-and settle; threads held at both ends can sag without acquiring extra length.
+and settle; threads held at both ends can sag without acquiring extra length. When the last crossing
+releases, a yarn keeps its existing bend and motion instead of restarting as a straight fragment.
 
 - **Explore** opens three ready-to-play studies: **Ribbons in motion** (satin, knife, breeze, slow
   motion), **Storm study** (gauze, claw, gale), and **Golden hour** (lamé, hand, breeze, slow motion).
@@ -102,8 +103,10 @@ mount, floor and airflow shaders and run force, fibre-colour and aerodynamic cas
 Persistent-rod checks exercise colliding cache buckets, reordered runs, gravity, shared airflow,
 release, growing frays at either held end, inherited release velocity, fixed roots, segment lengths,
 pause/reset, energy decay and slack-bridge arc length. Fully released yarn cases exercise gravity at
-both ends, exact lengths, wind, pause and floor contact. Production pull-out dispatches verify gradual
-release under load, sticking when unloaded, resumption and reset. Combustion checks cover cold stability,
+both ends, exact lengths, wind, pause and floor contact. Final-crossing handoffs check shape and average
+velocity at either held end, including newly released length; analytic free-flight cases cover weak and
+strong drag without losing small velocities to floating-point cancellation. Production pull-out dispatches
+verify gradual release under load, sticking when unloaded, resumption and reset. Combustion checks cover cold stability,
 ignition, fuel bounds, irreversible charring/yarn loss, upward preheat, spatially separated fragments,
 material differences, cooling and physical-time pause/reset. Both combustion and plume modules compile.
 Fringe cases preserve source yarn dyes and reject broken-end tufts on continuing yarns.

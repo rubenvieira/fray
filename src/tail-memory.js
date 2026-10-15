@@ -62,6 +62,32 @@ fn tailSlot(id: vec2<u32>, frame: u32) -> i32 {
   return -1;
 }
 
+// A final crossing releases the previous held rod. Lock its recent snapshot
+// while copying it; never read a record being written in this render frame.
+// Identity still includes the held side, so neighboring runs cannot donate
+// clamped-root correction velocities to a fragment that already has history.
+fn releasedTailSlot(id: vec2<u32>, frame: u32) -> i32 {
+  let hash = hash11(id.x ^ hash11(id.y));
+  let tag = (hash & 0x7FFFFFFEu) | 1u;
+  for (var probe = 0u; probe < 16u; probe++) {
+    let slot = (hash + probe) & (TAIL_HISTORY - 1u);
+    if (atomicLoad(&tailMemory[slot].claim) != tag) { continue; }
+    let locked = atomicCompareExchangeWeak(&tailMemory[slot].claim, tag, TAIL_LOCK);
+    if (!locked.exchanged) { continue; }
+    let stamp = atomicLoad(&tailMemory[slot].stamp);
+    if (all(tailMemory[slot].identity == id) && stamp < frame && stamp + 2u >= frame) {
+      return i32(slot);
+    }
+    atomicStore(&tailMemory[slot].claim, tag);
+  }
+  return -1;
+}
+fn unlockReleasedTail(slot: u32) {
+  let id = tailMemory[slot].identity;
+  let tag = (hash11(id.x ^ hash11(id.y)) & 0x7FFFFFFEu) | 1u;
+  atomicStore(&tailMemory[slot].claim, tag);
+}
+
 // Exact response of a damped bending mode about its current equilibrium.
 // Handles under/critical/over damping without timestep-dependent energy gain.
 fn rodResponse(d: vec3<f32>, v: vec3<f32>, omega: f32, damping: f32, dt: f32) -> array<vec3<f32>, 2> {
