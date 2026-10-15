@@ -1,3 +1,4 @@
+import { prepareMount, mountCamera, hangingRail, toToolSpace, fromToolSpace, normalizeMount } from "./mount.js";
 import { targetSpeed } from "./hand.js";
 
 var e = class extends Error {};
@@ -6209,7 +6210,7 @@ fn covLevel(L: vec4<f32>, diameter: f32) -> f32 {
 fn lightVis(tex: texture_2d<f32>, M: mat4x4<f32>, L: vec4<f32>, P: vec3<f32>, nominalGap: f32) -> f32 {
   let q = lightUV(M, P);
   // beyond the projection the light's path crosses the cloth's plane outside the coupon: the mount
-  if (any(q.xy < vec2<f32>(0.0)) || any(q.xy > vec2<f32>(1.0))) { return 0.0; }
+  if (any(q.xy < vec2<f32>(0.0)) || any(q.xy > vec2<f32>(1.0))) { return select(0.0, 1.0, F.floor.z > 1.5); }
   // the cloth's mean depth over the nominal penumbra (the blocker search)
   let s = textureSampleLevel(tex, covSampler, q.xy, covLevel(L, 2.0 * nominalGap * L.x));
   if (s.x < 1e-4) { return 1.0; }
@@ -6283,14 +6284,17 @@ fn fsFloor(in: VOut) -> @location(0) vec4<f32> {
   // tile is centred on the view (the visible floor is far smaller than one), so its edges never show
   let uv = vec2<f32>(P.x, -P.y) * F.floor.y + 0.5;
   let duv = (uv - 0.5) * F.floor.w / vec2<f32>(textureDimensions(baseTex)) + 0.5;
-  let base = textureSample(baseTex, detailSampler, duv).rgb;
+  // Hanging exposes the whole floor: use a matte studio surface rather than
+  // the framed setup's close stone crop, whose clamped edges streak at this view.
+  let studio = F.floor.z > 1.5;
+  let base = select(textureSample(baseTex, detailSampler, duv).rgb, vec3<f32>(0.045, 0.047, 0.052), studio);
   let ra = textureSample(raTex, matSampler, uv).rg;
-  let nt = textureSample(normalTex, detailSampler, duv).xyz * 2.0 - 1.0;
+  let nt = select(textureSample(normalTex, detailSampler, duv).xyz * 2.0 - 1.0, vec3<f32>(0.0, 0.0, 1.0), studio);
   let nl = max(length(nt), 1e-3);
   let N = normalize(nt);
   // Toksvig: the normals a texel averages widen the lobe by the length they lose
-  let alpha = sqrt(min(ra.x * ra.x * ra.x * ra.x + (1.0 - min(nl, 1.0)) / nl, 1.0));
-  let ao = ra.y;
+  let alpha = select(sqrt(min(ra.x * ra.x * ra.x * ra.x + (1.0 - min(nl, 1.0)) / nl, 1.0)), 0.72, studio);
+  let ao = select(ra.y, 1.0, studio);
   let diff = base * (1.0 / PI);
 
   // key: a broad source, seen through the cloth
@@ -6416,6 +6420,7 @@ const MOUNT_ALBEDO: vec3<f32> = vec3<f32>(0.045, 0.045, 0.047);
 struct VOut {
   @builtin(position) pos: vec4<f32>,
   @location(0) world: vec3<f32>,
+  @location(1) @interpolate(flat) rail: f32,
 };
 
 // One side of the ring per pair of triangles: inner k, inner k+1, outer k+1, outer k.
@@ -6432,6 +6437,7 @@ fn vsMount(@builtin(vertex_index) vi: u32) -> VOut {
   let W = mountCorner(vi);
   var o: VOut;
   o.world = W;
+  o.rail = corners[0].w;
   o.pos = F.viewProj * vec4<f32>(W, 1.0);
   return o;
 }
@@ -6443,7 +6449,12 @@ fn vsMountShadow(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32>
 
 @fragment
 fn fsMount(in: VOut) -> @location(0) vec4<f32> {
-  let N = vec3<f32>(0.0, 0.0, 1.0);
+  let geometricNormal = normalize(cross(dpdx(in.world), dpdy(in.world)));
+  var N = vec3<f32>(0.0, 0.0, 1.0);
+  if (in.rail > 0.5) {
+    N = geometricNormal;
+    if (dot(N, F.camPos.xyz - in.world) < 0.0) { N = -N; }
+  }
   let key = keyLight(in.world);
   let a = MOUNT_ALBEDO * (1.0 / PI);
   var c = a * max(key.z, 0.0) * key.w * F.keyColor.rgb * shadowFactor(in.world, N);
@@ -7196,6 +7207,7 @@ var Fe = class {
     );
   }
   mountGeometry() {
+    if (this.scene.mount === `hanging`) return hangingRail(this.scene);
     let e = this.scene.layers[0],
       t = this.scene.position,
       n = (t, n) => e.nodeOffset + n * e.nx + t,
@@ -7573,7 +7585,10 @@ var Fe = class {
     (p.set(h, 56),
       p.set([...g, (2 * P) / De], 72),
       p.set([...this.overColor.map((e) => e * this.overIntensity), this.overAngle], 76),
-      p.set([this.floorZ, 1 / this.floorTile, +!!d, this.floorDetailTexels], 80),
+      p.set(
+        [this.floorZ, 1 / this.floorTile, d ? (this.scene.mount === `hanging` ? 2 : 1) : 0, this.floorDetailTexels],
+        80,
+      ),
       p.set([0.2490234375, 0.8999999999999999, 2 * N, Ee / 4], 84),
       p.set([this.overAngle, 0.6000000000000001, 2 * P, De / 4], 88),
       p.set([this.keyInner, this.keyLeak, 0, 0], 92),
@@ -8015,7 +8030,9 @@ fn gripLead(@builtin(local_invocation_index) t: u32, @builtin(workgroup_id) wg: 
     var lead = requested - c;
     let l = length(lead);
     if (l > S.params.y) { lead *= S.params.y / l; }
-    gripGoal[3u * g] = vec4<f32>(c + lead, 0.0);
+    // The sum of the patch's spring forces at this accepted state, in N.
+    // It is feedback only; the goal and force applied by gripTerms are unchanged.
+    gripGoal[3u * g] = vec4<f32>(c + lead, S.params.x * held.w * length(lead));
   }
 }
 
@@ -12377,6 +12394,10 @@ function Ht(e) {
     i = new Uint32Array(r.buffer);
   for (let e = 0; e < i.length; e++) t = Math.imul(t ^ i[e], 16777619) >>> 0;
   for (let n = 0; n < e.segFlags.length; n++) t = Math.imul(t ^ e.segFlags[n], 16777619) >>> 0;
+  if (e.mount === `hanging`) {
+    n(0x48414e47);
+    for (const pinned of e.pinned) n(pinned);
+  }
   return t >>> 0;
 }
 function Ut(e, t, n) {
@@ -13333,7 +13354,7 @@ struct WindU {
   params: vec4<f32>,
   // Up to four air brushes: world position xyz, smoothly rising strength w.
   jets: array<vec4<f32>, 4>,
-  // Camera-ray dx/dz, dy/dz. Project the brush onto each fold's own height.
+  // Tool-frame camera-ray dx/dz, dy/dz; w = 1 on hanging cloth. Follow each fold's depth.
   aims: array<vec4<f32>, 4>,
 };
 
@@ -13353,7 +13374,9 @@ fn airflowAt(p: vec3<f32>) -> vec3<f32> {
   for (var j = 0u; j < 4u; j++) {
     let jet = WD.jets[j];
     if (jet.w <= 0.0) { continue; }
-    let delta = p - jet.xyz;
+    let worldDelta = p - jet.xyz;
+    let hanging = WD.aims[j].w > 0.5;
+    let delta = select(worldDelta, vec3<f32>(worldDelta.x, worldDelta.z, -worldDelta.y), hanging);
     let across = delta.xy - delta.z * WD.aims[j].xy;
     // Compact smooth footprint, spreading and losing speed as it rises.
     let rise = max(0.0, delta.z);
@@ -13362,7 +13385,8 @@ fn airflowAt(p: vec3<f32>) -> vec3<f32> {
     let falloff = max(0.0, 1.0 - r2);
     let height = 1.0 / (1.0 + 18.0 * rise * rise);
     let spread = vec3<f32>(across / radius * 0.22, 1.0);
-    air += spread * (WD.params.w * jet.w * falloff * falloff * height);
+    let flow = spread * (WD.params.w * jet.w * falloff * falloff * height);
+    air += select(flow, vec3<f32>(flow.x, -flow.z, flow.y), hanging);
   }
   // Overlapping brushes must not multiply the air speed without limit.
   return air * min(1.0, 12.0 / max(length(air), 1e-6));
@@ -15155,6 +15179,7 @@ const Q = Dt.h,
     reacquire = -1 / 0;
     topologyEvents = 0;
     damageCounts = [0, 0];
+    mount = `frame`;
     camera = { ...k };
     width = 1;
     height = 1;
@@ -15194,6 +15219,7 @@ const Q = Dt.h,
     strokes = /* @__PURE__ */ new Map();
     // pointer-driven bodies: punches in flight and claws being dragged (bodyContact capsules)
     fists = [];
+    fistPicks = new Set();
     claws = /* @__PURE__ */ new Map();
     airJets = /* @__PURE__ */ new Map();
     pinSeq = 0;
@@ -15224,7 +15250,11 @@ const Q = Dt.h,
       // the settled rest state of this fabric (see dev op `drape`; a stale or missing file just settles here)
       let s = fetch(
           new URL(
-            this.fabric === `denim` ? `${ASSET_BASE}drape.bin` : `${ASSET_BASE}drape-${this.fabric}.bin`,
+            this.mount === `hanging`
+              ? `${ASSET_BASE}drape-hanging-${this.fabric}.bin`
+              : this.fabric === `denim`
+                ? `${ASSET_BASE}drape.bin`
+                : `${ASSET_BASE}drape-${this.fabric}.bin`,
             self.location.href,
           ),
         )
@@ -15260,7 +15290,8 @@ const Q = Dt.h,
         (this.cssHeight = o),
         (t.width = r),
         (t.height = i),
-        (this.scene = Kt(Zt(this.fabric))),
+        (this.scene = prepareMount(Kt(Zt(this.fabric)), this.mount)),
+        (this.camera = mountCamera(this.mount, `reset`, a / o, k, o)),
         Z(0.25),
         (this.solver = new Pt(this.device, this.scene, Dt)),
         Z(0.5),
@@ -15276,10 +15307,18 @@ const Q = Dt.h,
         (this.topology = new tn(this.device, this.solver, this.scene, () => this.interaction.coreNodes)),
         (this.renderer = new Fe(this.device, d, this.solver, this.scene)),
         this.renderer.resize(r, i),
+        this.mount === `hanging` &&
+          Object.assign(this.renderer, {
+            floorZ: -0.52,
+            lightAnchor: [0, 0, -0.19],
+            keyOffset: [-0.25, -0.55, 0.35],
+            keyAim: [0, 0, 0],
+            overDir: E([0.15, -0.35, 1]),
+          }),
         this.solver.setFloor(this.renderer.floorZ),
         (this.speedProbe = this.device.createBuffer({
           label: `speedProbe`,
-          size: 16,
+          size: 208,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })),
         Z(0.7));
@@ -15340,7 +15379,10 @@ const Q = Dt.h,
     }
     async settle(e) {
       if (e !== null && Qt(this.solver, e)) this.rested = `file`;
-      else {
+      else if (this.mount === `hanging`) {
+        this.rested = `hanging`;
+        await $t(this.device, this.solver, Math.min(this.settleSteps, 72));
+      } else {
         let e = this.fabric !== `denim` && this.warmStart(await this.denimDrape());
         ((this.rested = e ? `warm` : `flat`),
           await $t(this.device, this.solver, e ? Math.min(this.settleSteps, WARM_SETTLE) : this.settleSteps));
@@ -15513,7 +15555,16 @@ const Q = Dt.h,
     }
     setSize(e, t, n, r) {
       // Render-quality changes keep the same CSS camera and pending cloth contacts.
-      if (n !== this.cssWidth || r !== this.cssHeight) this.cancelPicks();
+      if (n !== this.cssWidth || r !== this.cssHeight) {
+        this.cancelPicks();
+        if (this.mount === `hanging`) {
+          const before = mountCamera(this.mount, `reset`, this.cssWidth / this.cssHeight, k, this.cssHeight);
+          const after = mountCamera(this.mount, `reset`, n / r, k, r);
+          this.camera.target[2] += after.target[2] - before.target[2];
+          this.camera.fovY =
+            2 * Math.atan((Math.tan(this.camera.fovY / 2) * Math.tan(after.fovY / 2)) / Math.tan(before.fovY / 2));
+        }
+      }
       ((this.width = e), (this.height = t), (this.cssWidth = n), (this.cssHeight = r));
       let i = this.context.canvas;
       ((i.width = e), (i.height = t), this.renderer?.resize(e, t), (this.dirty = !0));
@@ -15537,6 +15588,7 @@ const Q = Dt.h,
       // hands let go; pins stay (they are the point of the pin tool)
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.claws.clear());
       this.clearAir();
+      this.fistPicks.clear();
       for (let [e, t] of [...this.grips]) t.pinned || this.endGrip(e);
       this.down.clear();
       ((this.tool = e), this.ready && !this.stage && X({ type: `cursor`, cursor: this.toolCursor() }));
@@ -15560,12 +15612,17 @@ const Q = Dt.h,
       if (event.phase !== `down` && event.phase !== `move`) return;
       let jet = this.airJets.get(event.id);
       if (!jet && (event.phase !== `down` || this.airJets.size >= 4)) return;
-      const { origin, dir } = this.ray(event.x, event.y);
+      const ray = this.ray(event.x, event.y);
+      const origin = toToolSpace(ray.origin, this.mount),
+        dir = toToolSpace(ray.dir, this.mount);
       if (![...origin, ...dir].every(Number.isFinite) || Math.abs(dir[2]) < 1e-6) return;
       const distance = (AIR.referenceZ - origin[2]) / dir[2];
       if (distance < 0) return;
-      const point = [origin[0] + distance * dir[0], origin[1] + distance * dir[1], AIR.referenceZ];
-      const aim = [dir[0] / dir[2], dir[1] / dir[2]];
+      const point = fromToolSpace(
+        [origin[0] + distance * dir[0], origin[1] + distance * dir[1], AIR.referenceZ],
+        this.mount,
+      );
+      const aim = [dir[0] / dir[2], dir[1] / dir[2], 0, +(this.mount === `hanging`)];
       if (jet) {
         jet.target = point;
         jet.targetAim = aim;
@@ -15590,64 +15647,143 @@ const Q = Dt.h,
       }
       this.body.setAirJets([...this.airJets.values()]);
     }
-    // Fist: a blunt sphere punched down through the sheet where the pointer hit, then drawn back up
-    fistPointer(e) {
-      if (e.phase !== `down` || this.fists.length >= 8) return;
-      let t = this.planeHit(e.x, e.y, 0);
-      t && (this.fists.push({ p: t, t0: this.simTime }), this.wake(), (this.dirty = !0));
+    pickToolSurface(event) {
+      const view = A(this.camera, this.width / this.height);
+      return this.interaction.pickAt(
+        view.viewProj,
+        (event.x / this.cssWidth) * this.width,
+        (event.y / this.cssHeight) * this.height,
+        this.width,
+        this.height,
+        this.pickRadius(event),
+      );
     }
-    // Claw: three sharp capsules riding just under the surface with the pointer, piercing and dragging
-    clawPointer(e) {
-      if (e.phase === `cancel` && e.id === -1) {
+    // Punch the visible surface, including a fold already billowing away from its rest plane.
+    fistPointer(event) {
+      if (event.phase !== `down` || this.fists.length + this.fistPicks.size >= 8) return;
+      const ticket = {},
+        token = this.pickToken;
+      this.fistPicks.add(ticket);
+      this.pickToolSurface(event).then(
+        (hit) => {
+          if (
+            !this.fistPicks.delete(ticket) ||
+            token !== this.pickToken ||
+            !hit ||
+            !this.ready ||
+            this.paused ||
+            this.stage
+          )
+            return;
+          this.fists.push({ p: toToolSpace(hit.position, this.mount), t0: this.simTime });
+          this.wake();
+          this.dirty = true;
+        },
+        () => this.fistPicks.delete(ticket),
+      );
+    }
+    clawPointer(event) {
+      if (event.phase === `cancel` && event.id === -1) {
         this.claws.clear();
         return;
       }
-      if (e.phase === `down`) {
-        if (this.claws.size >= 4) return;
-        let tip = this.planeHit(e.x, e.y, FIST.clawDepth);
-        if (tip) {
-          this.claws.set(e.id, { tip, dir: [1, 0], pending: [tip], done: !1, doneAt: Infinity, finalApplied: !1 });
-          this.wake();
-          this.dirty = !0;
+      let claw = this.claws.get(event.id);
+      if (event.phase === `down`) {
+        if (claw || this.claws.size >= 4) return;
+        claw = {
+          tip: null,
+          dir: [1, 0],
+          pending: [],
+          samples: [],
+          busy: false,
+          done: false,
+          doneAt: Infinity,
+          finalApplied: false,
+        };
+        this.claws.set(event.id, claw);
+      } else {
+        if (!claw || claw.done) return;
+        if (event.phase !== `move` && event.phase !== `up`) {
+          this.claws.delete(event.id);
+          return;
         }
-        return;
+        if (event.phase === `up`) {
+          claw.done = true;
+          claw.doneAt = event.time;
+        }
       }
-      const claw = this.claws.get(e.id);
-      if (!claw) return;
-      if (e.phase !== `move` && e.phase !== `up`) {
-        this.claws.delete(e.id);
-        return;
-      }
-      if (claw.done) return;
-      const tip = this.planeHit(e.x, e.y, FIST.clawDepth);
-      const last = claw.pending.at(-1) ?? claw.tip;
-      if (tip && Math.hypot(tip[0] - last[0], tip[1] - last[1]) > 1e-6) {
-        claw.pending.push(tip);
-        // Keep the first unconsumed pose, turns, and endpoint without growing a
-        // long trail behind the finger. Existing solver steps consume the path.
-        if (claw.pending.length > 8) {
-          let index = 1,
-            smallest = Infinity;
-          for (let j = 1; j < claw.pending.length - 1; j++) {
-            const [a, b, c] = claw.pending.slice(j - 1, j + 2);
-            const bend =
-              Math.hypot(b[0] - a[0], b[1] - a[1]) +
-              Math.hypot(c[0] - b[0], c[1] - b[1]) -
-              Math.hypot(c[0] - a[0], c[1] - a[1]);
-            if (bend < smallest) {
-              smallest = bend;
-              index = j;
+      this.clawSample(event.id, claw, event);
+    }
+    clawSample(id, claw, event) {
+      if (event) {
+        const last = claw.samples.at(-1) ?? claw.sample;
+        if (!last || last.x !== event.x || last.y !== event.y) claw.samples.push(event);
+        if (claw.samples.length > 8) {
+          let best = 1,
+            bend = Infinity;
+          for (let j = 1; j < claw.samples.length - 1; j++) {
+            const [a, b, c] = claw.samples.slice(j - 1, j + 2);
+            const value =
+              Math.hypot(b.x - a.x, b.y - a.y) + Math.hypot(c.x - b.x, c.y - b.y) - Math.hypot(c.x - a.x, c.y - a.y);
+            if (value < bend) {
+              bend = value;
+              best = j;
             }
           }
-          claw.pending.splice(index, 1);
+          claw.samples.splice(best, 1);
         }
       }
-      if (e.phase === `up`) {
-        claw.done = !0;
-        claw.doneAt = e.time;
+      if (claw.busy || !claw.samples.length) return;
+      if (claw.done && Rn(performance.now()) - claw.doneAt > 200) {
+        this.claws.delete(id);
+        return;
       }
-      this.wake();
-      this.dirty = !0;
+      claw.busy = true;
+      const sample = claw.samples.shift();
+      claw.sample = sample;
+      this.pickToolSurface(sample).then(
+        (hit) => {
+          claw.busy = false;
+          if (this.claws.get(id) !== claw) return;
+          if (claw.done && Rn(performance.now()) - claw.doneAt > 200) {
+            this.claws.delete(id);
+            return;
+          }
+          if (hit) {
+            const point = toToolSpace(hit.position, this.mount);
+            point[2] += FIST.clawDepth;
+            if (!claw.tip) claw.tip = point;
+            claw.pending.push(point);
+            if (claw.pending.length > 8) {
+              let best = 1,
+                bend = Infinity;
+              for (let j = 1; j < claw.pending.length - 1; j++) {
+                const [a, b, c] = claw.pending.slice(j - 1, j + 2);
+                const value =
+                  Math.hypot(b[0] - a[0], b[1] - a[1]) +
+                  Math.hypot(c[0] - b[0], c[1] - b[1]) -
+                  Math.hypot(c[0] - a[0], c[1] - a[1]);
+                if (value < bend) {
+                  bend = value;
+                  best = j;
+                }
+              }
+              claw.pending.splice(best, 1);
+            }
+            this.wake();
+            this.dirty = true;
+          } else {
+            // Crossing a hole breaks contact; the next hit cannot sweep a claw through empty space.
+            claw.tip = null;
+            claw.pending.length = 0;
+            this.body.hasPrev = false;
+          }
+          this.clawSample(id, claw);
+        },
+        () => {
+          if (this.claws.get(id) === claw) this.claws.delete(id);
+        },
+      );
     }
     // Pin: a stationary grip on the picked node; picking a pinned node again lets it go
     pickRadius(point, blade = !1) {
@@ -15702,20 +15838,31 @@ const Q = Dt.h,
       for (let e of this.fists) {
         let r = n - e.t0,
           i =
-            r < FIST.down
+            e.p[2] +
+            (r < FIST.down
               ? FIST.top + (FIST.bottom - FIST.top) * (1 - Math.pow(1 - r / FIST.down, 3))
               : r < FIST.down + FIST.hold
                 ? FIST.bottom
-                : FIST.bottom + (FIST.top - FIST.bottom) * Math.min(1, (r - FIST.down - FIST.hold) / FIST.up);
+                : FIST.bottom + (FIST.top - FIST.bottom) * Math.min(1, (r - FIST.down - FIST.hold) / FIST.up));
         roster.push(e);
-        t.push({ a: [e.p[0], e.p[1], i], b: [e.p[0], e.p[1], i + 0.02], radius: FIST.radius, active: !0, sharp: !1 });
+        t.push({
+          a: fromToolSpace([e.p[0], e.p[1], i], this.mount),
+          b: fromToolSpace([e.p[0], e.p[1], i + 0.02], this.mount),
+          radius: FIST.radius,
+          active: !0,
+          sharp: !1,
+        });
       }
       const now = Rn(performance.now());
       for (const [id, claw] of this.claws) {
         // A released fast swipe still gets its last contact substep. Never
         // replay a stale trail after a long GPU stall or while in slow motion.
-        if (claw.done && (claw.finalApplied || now - claw.doneAt > 120)) {
+        if (claw.done && (claw.finalApplied || now - claw.doneAt > 200)) {
           this.claws.delete(id);
+          continue;
+        }
+        if (!claw.tip) {
+          if (claw.done && !claw.busy && !claw.samples.length) this.claws.delete(id);
           continue;
         }
         const tip = claw.pending.shift();
@@ -15733,9 +15880,15 @@ const Q = Dt.h,
             claw.tip[1] + claw.dir[0] * n * FIST.clawGap,
             claw.tip[2],
           ];
-          t.push({ a: [r[0], r[1], r[2] + 0.03], b: r, radius: FIST.clawRadius, active: !0, sharp: !0 });
+          t.push({
+            a: fromToolSpace([r[0], r[1], r[2] + 0.03], this.mount),
+            b: fromToolSpace(r, this.mount),
+            radius: FIST.clawRadius,
+            active: !0,
+            sharp: !0,
+          });
         }
-        if (claw.done && !claw.pending.length) claw.finalApplied = !0;
+        if (claw.done && !claw.pending.length && !claw.samples.length && !claw.busy) claw.finalApplied = !0;
       }
       // Previous capsule positions are indexed. When a fist expires or a claw
       // changes, do not sweep its replacement from the removed body's position.
@@ -15767,7 +15920,7 @@ const Q = Dt.h,
       this.windLevel = Math.max(0, Math.min(2, e | 0));
       let t = [0, 6, 32][this.windLevel],
         n = -0.6,
-        r = [Math.cos(n), Math.sin(n), 0.35],
+        r = this.mount === `hanging` ? [0.35, -1, 0.15] : [Math.cos(n), Math.sin(n), 0.35],
         i = Math.hypot(...r);
       (this.body.setWind([r[0] / i, r[1] / i, r[2] / i], t), t > 0 && (this.wake(), (this.dirty = !0)));
     }
@@ -16001,6 +16154,7 @@ const Q = Dt.h,
       this.grips.size === 0 && X({ type: `cursor`, cursor: `grab` });
     }
     releaseAll(preservePins = !1) {
+      this.fistPicks.clear();
       this.clearAir();
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.body?.clearStrokes(), this.claws.clear());
       ((this.fists.length = 0), this.body && this.body.count > 0 && !this.stage && this.body.setPose([], Q));
@@ -16009,6 +16163,8 @@ const Q = Dt.h,
     }
     cancelPicks() {
       this.clearAir();
+      this.fistPicks.clear();
+      this.claws.clear();
       // A pending screen-space hit belongs to the camera that submitted it.
       this.pickToken++;
       for (const id of this.picking.keys()) this.down.delete(id);
@@ -16019,19 +16175,16 @@ const Q = Dt.h,
     setCamera(preset) {
       if (!this.ready || this.stage || ![`front`, `angle`, `detail`, `reset`].includes(preset)) return;
       this.cancelPicks();
-      const variation = {
-        front: { pitch: 0.03, yaw: 0 },
-        angle: { pitch: 0.64, yaw: -0.42 },
-        detail: { distance: 0.53, pitch: 0.32, yaw: -0.18 },
-        reset: {},
-      }[preset];
-      this.camera = { ...k, target: [...k.target], ...variation };
+      this.camera = mountCamera(this.mount, preset, this.cssWidth / this.cssHeight, k, this.cssHeight);
       this.dirty = !0;
     }
     zoom(e) {
       if (!this.ready || this.stage || !Number.isFinite(e)) return;
       if (e) this.cancelPicks();
-      this.camera.distance = Math.max(0.3, Math.min(1.15, this.camera.distance * Math.exp(e * 8e-4)));
+      this.camera.distance = Math.max(
+        0.3,
+        Math.min(this.mount === `hanging` ? 2 : 1.15, this.camera.distance * Math.exp(e * 8e-4)),
+      );
       this.dirty = !0;
     }
     // orbit the camera: yaw and pitch deltas (rad); pitch 0 looks straight down
@@ -16039,7 +16192,7 @@ const Q = Dt.h,
       if (!this.ready || this.stage || !Number.isFinite(e) || !Number.isFinite(t)) return;
       if (e || t) this.cancelPicks();
       ((this.camera.yaw += e),
-        (this.camera.pitch = Math.max(0.03, Math.min(1.3, this.camera.pitch + t))),
+        (this.camera.pitch = Math.max(0.03, Math.min(this.mount === `hanging` ? 1.5 : 1.3, this.camera.pitch + t))),
         (this.dirty = !0));
     }
     wheel(e) {
@@ -16140,9 +16293,12 @@ const Q = Dt.h,
       let t = this.speedProbe,
         n = (this.probeSteps + e) * Q,
         epoch = this.releaseEpoch;
+      const measuredGrips = [...this.grips.values()].filter((grip) => !grip.pinned);
+      const measureLoad = measuredGrips.length > 0 && !!this.interaction.gripGoal;
       ((this.probeSteps = 0), (this.probeBusy = !0));
       let r = this.device.createCommandEncoder({ label: `restProbe` });
       (r.copyBufferToBuffer(this.solver.counters, 0, t, 0, 16),
+        measureLoad && r.copyBufferToBuffer(this.interaction.gripGoal, 0, t, 16, 192),
         r.clearBuffer(this.solver.counters, 8, 4),
         this.device.queue.submit([r.finish()]),
         t.mapAsync(GPUMapMode.READ).then(
@@ -16152,9 +16308,20 @@ const Q = Dt.h,
               i = new Uint32Array(e, 0, 2),
               counts = [i[0], i[1]],
               a = counts[0] + counts[1];
+            let force = 0;
+            if (measureLoad) {
+              const load = new Float32Array(e);
+              for (const grip of measuredGrips) {
+                // A GPU result belongs to the exact gesture that requested it.
+                if (![...this.grips.values()].includes(grip)) continue;
+                const value = load[4 + 12 * grip.slot + 3];
+                if (Number.isFinite(value)) force = Math.max(force, value);
+              }
+            }
             t.unmap();
             this.probeBusy = !1;
             if (epoch !== this.releaseEpoch) return;
+            if (measureLoad) X({ type: `tension`, force });
             const ruptures = Math.max(0, counts[0] - this.damageCounts[0]);
             const pulledOut = Math.max(0, counts[1] - this.damageCounts[1]);
             this.damageCounts = counts;
@@ -16407,6 +16574,7 @@ const Q = Dt.h,
           nodes: this.solver.N,
           tool: this.tool,
           fabric: this.fabric,
+          mount: this.mount,
           rested: this.rested,
           wind: this.windLevel,
           airJets: this.airJets.size,
@@ -16438,6 +16606,7 @@ In.onmessage = (t) => {
     case `init`:
       ((ASSET_BASE = typeof n.base == `string` && n.base ? n.base : `/`),
       ($.fabric = n.fabric ?? `tartan`),
+      ($.mount = normalizeMount(n.mount)),
       ($.settleSteps = n.settleSteps > 0 ? n.settleSteps : 420),
       $.init(n.canvas, n.width, n.height, n.cssWidth, n.cssHeight)).catch((t) => {
         (console.error(t),

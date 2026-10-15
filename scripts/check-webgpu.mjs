@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { checkGripFeedback } from "./grip-feedback-checks.mjs";
 import { checkAirflow } from "./airflow-checks.mjs";
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
@@ -14,10 +15,12 @@ const context = vm.createContext({
 });
 // Evaluating declarations creates no GPU device or scene; init is message-driven.
 vm.runInContext(source.replace(/^import .*;\n/gm, ""), context);
-const { common, field, grip, thread, appearance, materials, drag, body } = vm.runInContext(
+const { common, field, grip, thread, appearance, materials, drag, body, mount, floor } = vm.runInContext(
   `({
   common: _, field: ot, grip: R, appearance: oe, drag: Ct, body: nn,
   thread: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + fe + he,
+  mount: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + we,
+  floor: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + Se,
   materials: Object.values(FABRICS).map(preset => preset.material)
 })`,
   context,
@@ -204,6 +207,8 @@ try {
           "yarn field": common + field,
           grip: common + grip,
           "loose threads": thread,
+          mount,
+          floor,
           airflow: common + drag + body,
         },
         mechanicsCode,
@@ -240,9 +245,11 @@ try {
     assert.ok(Math.abs(denimWeft[0] - 0.44) < 1e-6 && Math.abs(denimWeft[2] - 0.43) < 1e-6);
   }
   console.log(
-    `GPU checks passed: 4 production modules compiled, ${cases.length} force cases, ${fibreCases.length} fibre colours.`,
+    `GPU checks passed: 6 production modules compiled, ${cases.length} force cases, ${fibreCases.length} fibre colours.`,
   );
   console.log(`Adapter: ${result.description}. Correctness only; no real-phone performance claim.`);
+  const feedback = await page.evaluate(checkGripFeedback, common + grip);
+  console.log(`Grip feedback checks passed: ${feedback.cases} GPU load, clamp and release cases.`);
   const airflow = await page.evaluate(checkAirflow, common + drag + body);
   assert.deepEqual(airflow.errors, []);
   console.log(

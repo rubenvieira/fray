@@ -20,8 +20,8 @@ document.body.insertAdjacentHTML(
     title: `Fray`,
     intro: `Real fabric, simulated yarn by yarn on your graphics card: every thread stretches, frays and snaps on its own. No score to beat and no wrong way to play.`,
     items: [
-      [`Tools`, `Drag with <b>Hand</b> to pull and tear. <b>Knife</b> and <b>Claw</b> slice, <b>Fist</b> punches, <b>Pin</b> anchors or releases a point. Cut a flap, then hold and sweep with <b>Air</b> to lift it. Release to let it fall. Touch works too.`],
-      [`Fabric`, `Pick one of eight weaves, or print your own photo on it. Explore has ready-made starting points. A new fabric starts a fresh sheet.`],
+      [`Tools`, `Drag with <b>Hand</b> to pull and tear. <b>Knife</b> and <b>Claw</b> slice, <b>Fist</b> punches, <b>Pin</b> anchors or releases a point. Hold and sweep with <b>Air</b> to billow the fabric or catch a loose ribbon. The Hand hint shows resistance as you pull. Release to let the cloth settle. Touch works too.`],
+      [`Fabric`, `Pick one of eight weaves, or print your own photo on it. <b>Hanging</b> holds the top edge and lets the cloth drape; <b>Stretched</b> holds every edge. Changing fabric or setup starts a fresh sheet. Explore has ready-made starting points.`],
       [`Effects`, `Wind catches the folds and surviving threads; open weaves let more air through. Try slow motion after cutting a ribbon, or give the fabric a shake, from the Effects menu.`],
       [`Keep`, `Frame pauses the fabric so you can compose a shot, then keep it in your Collection. Save a picture makes a session card; Record saves a clip of up to 20 seconds.`],
       [`View`, `Scroll to zoom, right-drag or the arrow keys to orbit. On touch screens, two fingers orbit and pinch zooms. In Frame, a plain drag orbits.`],

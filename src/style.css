@@ -2677,3 +2677,19 @@ body.pc-hidden .workbench, body.pc-hidden .experiences, body.pc-hidden .tools { 
   .score { top: calc(64px + env(safe-area-inset-top, 0px)) !important; right: 8px !important; padding: 8px 10px; }
   .interaction-guide { font-size: 12px; }
 }
+
+.interaction-guide.grip-active { background-image: linear-gradient(var(--pc-accent), var(--pc-accent)); background-size: calc(var(--grip-load, 0) * 100%) 2px; background-repeat: no-repeat; background-position: center bottom; transition: background-size 0.12s ease-out; }
+.interaction-guide.grip-tearing .guide-title { color: var(--pc-accent); }
+
+.mount-options { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.mount-options .experience { justify-content: center; min-height: 40px; padding: 10px 8px; font-size: 13px; }
+.setup-description { padding: 7px 8px 12px; color: var(--pc-muted); font: 400 12px/1.4 var(--pc-font); }
+
+@media (min-width: 701px) and (max-width: 1150px) {
+  .workbench { width: calc(100% - 24px); }
+  .workbench .dock.pc-dock { width: 100%; flex-wrap: wrap; justify-content: center; overflow: visible; }
+  .dock.pc-dock .tool-palette { flex: 1 1 100%; justify-content: center; }
+  .dock.pc-dock > .pc-sep { display: none; }
+  .dock.pc-dock .frame-toggle span, .dock.pc-dock .dock-actions span { display: none; }
+  .experiences.pc-menu, .tools.pc-menu { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
+}

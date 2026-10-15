@@ -147,14 +147,21 @@
       >
         <span class="current-swatch fabric-swatch" data-fabric="tartan" aria-hidden="true"></span>
         <span class="fabric-selection"
-          ><span class="control-label">Fabric</span><span class="current-fabric">Tartan</span></span
+          ><span class="control-label current-setup">Stretched</span><span class="current-fabric">Tartan</span></span
         >
         <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
       </button>
       <ul class="experiences pc-menu pc-glass" id="experiences" role="menu" aria-label="Choose your fabric" hidden>
         <li class="menu-intro" role="none">
           <span class="eyebrow">The material library</span>
-          <p>Changing fabric starts a fresh sheet.</p>
+          <p>Changing fabric or setup starts a fresh sheet.</p>
+        </li>
+        <li role="none">
+          <div class="mount-options" role="group" aria-label="Fabric setup">
+            <button class="experience" type="button" role="menuitemradio" data-mount="frame" aria-checked="true">Stretched</button>
+            <button class="experience" type="button" role="menuitemradio" data-mount="hanging" aria-checked="false">Hanging</button>
+          </div>
+          <p class="setup-description">All edges held. Cut a flap or pull a tear.</p>
         </li>
         <li role="none">
           <button class="experience fabric" type="button" role="menuitemradio" aria-checked="true" data-fabric="tartan">

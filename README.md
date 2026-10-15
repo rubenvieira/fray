@@ -6,6 +6,10 @@ simulated on your **WebGPU**: pull it, slash it, hear it tear, share the damage.
 The engine is a yarn-level cloth solver: every warp and weft yarn is simulated and rendered, so a
 tear is not a texture effect but yarns breaking, slipping out of the weave and fraying.
 
+The sheet starts **Hanging** from its top edge: the free sides and lower hem drape, billow and swing
+under gravity. Choose **Stretched** in the Fabric menu for the original all-edge mounting. Both setups
+use the same yarns, masses, damage and contact solver; changing setup starts a fresh sheet.
+
 Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a fresh sheet.
 
 - **Explore** opens three ready-to-play studies: **Ribbons in motion** (satin, knife, breeze, slow
@@ -26,10 +30,13 @@ Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a 
   **fist** (`B`) punches a blunt sphere down through the sheet where you click, tenting it until it
   rips; the **pin** (`P`) holds a point so one mouse can stretch the cloth between pin and hand (pin
   it again to let go); **Air** (`6`) lifts the cloth without gripping it. Hold and sweep to billow the
-  fabric or catch a torn ribbon, then release and let it settle. Cut a flap first for the clearest lift;
+  fabric or catch a torn ribbon, then release and let it settle. In Hanging, Air blows outward through the fabric;
+  in Stretched, it lifts from below. Fist and Claw pick the visible cloth surface, including folds
+  that have moved away from the rest plane. In Stretched, cut a flap first for the clearest lift;
   the mounted, intact sheet naturally resists billowing. The hint lights while air is flowing, and the
   brush follows the visible folds even in angled views. One finger uses the tool; two fingers
   still orbit and pinch to zoom. Tool changes, camera gestures, framing and leaving the page stop the fans immediately.
+- **Feel the pull**: the Hand hint shows the measured resistance of the grip, with a subtle load line. “Threads giving way” follows confirmed ruptures or yarn pull-out; pointer speed does not trigger it. Releasing or cancelling the gesture clears the cue immediately.
 - **Effects** (Effects menu): **wind** (`W`: off, breeze, gale) travels through the folds in coherent
   eddies, easing in and out instead of jolting the cloth. Open weaves pass more air; separated yarns
   stop acting as intact sails. **Slow motion** (`T`) runs the simulation at a fifth of real time; **shake** (`X`) throws
@@ -81,11 +88,12 @@ npm test           # input, interaction, hand-motion, haptic and audio behavior 
 npm run test:gpu   # optional WebGPU checks: yarn mechanics, fibre colour and airflow; requires Playwright
 ```
 
-The GPU checks compile the production grip, yarn-damage, loose-thread and airflow shaders and run force,
+The GPU checks compile the production grip, yarn-damage, loose-thread, mount, floor and airflow shaders and run force,
 fibre-colour and aerodynamic cases on SwiftShader. Airflow cases cover two-sided and edge-on cloth,
 porosity, partial tears, free strands, pinned/retired nodes, overlapping fans, oblique aiming at raised
-and hanging folds, and cloth moving with or
-against the air. They validate GPU calculations, not phone frame rates. Use a locally installed
+and hanging folds, outward fans on vertical cloth, and cloth moving with or against the air.
+Grip-load cases verify the actual GPU spring resultant, force clamp, released patches and translation
+invariance. They validate GPU calculations, not phone frame rates. Use a locally installed
 `playwright` package, or set `PLAYWRIGHT_MODULE` to an existing Playwright module's absolute path.
 `CHROME_PATH` selects an installed Chrome executable. On Linux, use a short `TMPDIR` on a filesystem
 with space for Chrome's profile and socket.
@@ -99,6 +107,8 @@ src/main.js                main thread: canvas + OffscreenCanvas handoff, pointe
                            AudioContext + tear-sound engine (TearAudio), interface state, accessible menus and dialogs
 src/gestures.js            pointer routing: cloth manipulation, frame orbit, two-finger orbit and pinch zoom
 src/hand.js                acceleration-limited grip motion with discrete braking
+src/mount.js               stretched/hanging boundary conditions, initial pleat, tool frames, camera and rail
+src/grip-feedback.js       measured hand-load and confirmed tear cues
 src/audio-preparation.js   tear-recording worker lifecycle and transferable channel copies
 src/audio-preparation-worker.js / src/tear-source.js  off-thread sample mixing, filtering and normalization
 src/tear-feedback.js       brief touch haptics driven by confirmed fabric separation
@@ -108,7 +118,7 @@ src/worker.js              WebGPU engine (runs in a module Worker): cloth/thread
                            pipelines, floor + fabric renderer, camera, the "Smilie" staged experience
 src/worklet.js             AudioWorkletProcessor `tear-voice`: granular tear-sound synthesis driven by
                            fracture/pan/cut records streamed from the worker
-public/drape*.bin          pre-computed resting drape of each fabric (denim: drape.bin)
+public/drape*.bin          settled stretched and hanging drapes (hanging: drape-hanging-<fabric>.bin)
 public/texture/floor_*     floor PBR maps (base color, normal, roughness, AO)
 public/models/smilie.glb   model for the "Smilie" experience
 public/stage/smilie.clip   staged animation clip for the experience
@@ -158,7 +168,11 @@ tests/audio-preparation.test.js  sample-output parity, finite normalization and 
    GPU pick the hand uses, and queued to the next solver substep.
 8. The fist and claw are capsules on the body-contact system the staged creature uses (a blunt sphere
    animated down and up; three sharp capsules riding under the surface, which the pierce pass cuts
-   around). Pins are grips whose hand never moves. Wind and Air shift the existing implicit drag
+   around). Fist and Claw use GPU surface picks, so their contact follows raised and billowing folds.
+   Pins are grips whose hand never moves. The grip reduction also reports the resultant spring
+   load for the Hand cue; its unused goal w component carries feedback without changing the force.
+   A readback belongs to its exact grip object, so recycled slots cannot inherit an earlier gesture's
+   load. Wind and Air shift the existing implicit drag
    potential into the moving air's frame, using normals from connected yarns and a porous-screen
    approximation based on thread cover. Drag responds to relative velocity: cloth carried with the
    airflow feels no further force, and faster cloth is slowed down. The added gradient uses the
@@ -171,10 +185,18 @@ tests/audio-preparation.test.js  sample-output parity, finite normalization and 
 9. Fabrics are presets (`FABRICS` in `src/worker.js`): yarn mechanics, weave (twill repeat / warp-over), node
    bundling and wear. The renderer branches on the material id in the layer uniform for the yarn, rim-fibre
    and fray colours. Switching fabric restarts the worker on a fresh canvas so the old GPU device is released.
+   Hanging frees the side and lower borders, rotates the tool frame toward the vertical fabric,
+   uses a top rail and lowers the colliding floor. The initial 4 mm pleat takes up width slack; all
+   subsequent folds come from the solver. Air pressure stays bounded and follows the pointer ray
+   in either orientation.
    Each fabric ships its settled rest state (`public/drape*.bin`); without one the engine warm-starts from
    the denim's drape and settles briefly.
 
 ### Drape files and the warm start
+
+`public/drape-hanging-<fabric>.bin` stores each hanging rest pose. Hanging caches include their
+mount mask in the hash; stretched cache hashes stay compatible. A missing hanging cache settles
+the vertical pose for up to 72 fixed physical substeps, with damage history disabled.
 
 `public/drape.bin` is the denim's settled rest state; the loader skips the 420-substep settle when the
 file's scene hash matches. Every other fabric ships its own `public/drape-<fabric>.bin`, so all of them

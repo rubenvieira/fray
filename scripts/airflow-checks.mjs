@@ -117,7 +117,14 @@ fn airflowProbe(@builtin(global_invocation_id) id: vec3<u32>) {
             b = (j - 1) * 0.01;
           nu[4 * n] = i | (j << 12);
           nu[4 * n + 1] = pinned ? 1 : 0;
-          positions.set(edge ? [0, a, b + height, retired ? 2 : 0] : [a, b, height, retired ? 2 : 0], 4 * n);
+          positions.set(
+            edge === "y"
+              ? [a, height, b, retired ? 2 : 0]
+              : edge
+                ? [0, a, b + height, retired ? 2 : 0]
+                : [a, b, height, retired ? 2 : 0],
+            4 * n,
+          );
           for (let f = 0; f < 2; f++) {
             const offset = 8 * (2 * n + f);
             sf[offset] = 0.01;
@@ -163,6 +170,17 @@ fn airflowProbe(@builtin(global_invocation_id) id: vec3<u32>) {
     const flat = await run();
     check(flat.force[2] > 0, "an upward fan must lift the sheet, not push it down");
     near(flat.force[0], 0, "no invented tangential sheet force");
+    const hanging = await run({ edge: "y", jetOrigin: [0, 0.02, 0], aim: [0, 0, 0, 1] });
+    near(hanging.force[1], -flat.force[2], "hanging Air blows outward through the fabric plane");
+    near(hanging.force[2], 0, "hanging Air does not invent vertical lift");
+    const aimedHanging = await run({
+      edge: "y",
+      height: -0.1,
+      jetOrigin: [-0.144, 0.02, -0.048],
+      aim: [1.2, 0.4, 0, 1],
+    });
+    const centeredHanging = await run({ edge: "y", height: -0.1, jetOrigin: [0, 0.02, 0], aim: [0, 0, 0, 1] });
+    near(aimedHanging.force[1], centeredHanging.force[1], "hanging fan follows the pointer ray through billowed cloth");
     for (const height of [0.1, -0.12]) {
       const aim = [1.2, 0.4],
         rise = height + 0.02;
@@ -213,7 +231,7 @@ fn airflowProbe(@builtin(global_invocation_id) id: vec3<u32>) {
         "overlapping air brushes stay bounded",
       );
     check(errors.length === 0, errors.join("\n"));
-    return { cases: 18, adapter: adapter.info.description || adapter.info.architecture, lift: flat.force[2], errors };
+    return { cases: 21, adapter: adapter.info.description || adapter.info.architecture, lift: flat.force[2], errors };
   } finally {
     resources.forEach((b) => b.destroy());
     device.destroy();
