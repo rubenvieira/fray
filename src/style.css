@@ -2648,7 +2648,7 @@ html, body { font-family: var(--pc-font); }
 /* Score and notices under the bar */
 .score { top: calc(76px + env(safe-area-inset-top, 0px)) !important; right: 12px !important; padding: 12px 14px; border-radius: 14px; background: var(--pc-panel); border: 1px solid var(--pc-line); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); font-family: var(--pc-font); }
 .score-n { font-family: var(--pc-font) !important; font-weight: 600; letter-spacing: -0.04em; }
-.status { top: calc(76px + env(safe-area-inset-top, 0px)); font-family: var(--pc-font); background: var(--pc-panel); border-color: var(--pc-line); }
+.status { top: calc(76px + env(safe-area-inset-top, 0px)); bottom: auto; font-family: var(--pc-font); background: var(--pc-panel); border-color: var(--pc-line); }
 
 /* Frame mode, dialogs and sheets */
 .frame-bar { background: var(--pc-panel) !important; border-color: var(--pc-line) !important; border-radius: 16px; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: var(--pc-shadow); font-family: var(--pc-font); }
