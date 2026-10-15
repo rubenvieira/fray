@@ -29,7 +29,7 @@ and settle; threads held at both ends can sag without acquiring extra length.
   **Keep in collection** in an image preview to save it; reopening the page preserves the pieces.
   Open a piece to download or share it, or remove it with the inline confirmation. Saving a new
   piece never evicts an existing one. Video clips use the existing download/share flow.
-- **Tools** (always visible in the bottom toolbar, or keys `1`-`6`): the **hand** grips and pulls; the **knife** (`K`) slashes,
+- **Tools** (always visible in the bottom toolbar, or keys `1`-`7`): the **hand** grips and pulls; the **knife** (`K`) slashes,
   cutting every yarn crossing along the stroke in weave space so the slit is continuous however fast
   you move; the **claw** (`C`) drags three sharp points that pierce the weave and ladder it; the
   **fist** (`B`) punches a blunt sphere down through the sheet where you click, tenting it until it
@@ -41,6 +41,10 @@ and settle; threads held at both ends can sag without acquiring extra length.
   the mounted, intact sheet naturally resists billowing. The hint lights while air is flowing, and the
   brush follows the visible folds even in angled views. One finger uses the tool; two fingers
   still orbit and pinch to zoom. Tool changes, camera gestures, framing and leaving the page stop the fans immediately.
+- **Fire** (`7`): hold on the cloth to ignite it, then release to watch the burn. Heat browns and chars
+  the weave, consumes its yarn sections and opens holes through the existing tear solver. Flames rise
+  and bend with the wind. Wool takes more heat than linen or gauze; nylon softens before sustained
+  flame. Air cools a burning patch. Frame pauses heat and flame motion; Reset restores unburned fabric.
 - **Feel the pull**: the Hand hint shows the measured resistance of the grip, with a subtle load line. “Threads giving way” follows confirmed ruptures or yarn pull-out; pointer speed does not trigger it. Releasing or cancelling the gesture clears the cue immediately.
 - **Effects** (Effects menu): **wind** (`W`: off, breeze, gale) travels through the folds in coherent
   eddies, easing in and out instead of jolting the cloth. Open weaves pass more air; separated yarns
@@ -97,7 +101,11 @@ The GPU checks compile the production grip, yarn-damage, loose-thread, fringe, t
 mount, floor and airflow shaders and run force, fibre-colour and aerodynamic cases on SwiftShader.
 Persistent-rod checks exercise colliding cache buckets, reordered runs, gravity, shared airflow,
 release, growing frays at either held end, inherited release velocity, fixed roots, segment lengths,
-pause/reset, energy decay and slack-bridge arc length.
+pause/reset, energy decay and slack-bridge arc length. Fully released yarn cases exercise gravity at
+both ends, exact lengths, wind, pause and floor contact. Production pull-out dispatches verify gradual
+release under load, sticking when unloaded, resumption and reset. Combustion checks cover cold stability,
+ignition, fuel bounds, irreversible charring/yarn loss, upward preheat, spatially separated fragments,
+material differences, cooling and physical-time pause/reset. Both combustion and plume modules compile.
 Fringe cases preserve source yarn dyes and reject broken-end tufts on continuing yarns.
 Airflow cases cover two-sided and edge-on cloth,
 porosity, partial tears, free strands, pinned/retired nodes, overlapping fans, oblique aiming at raised
@@ -122,6 +130,9 @@ src/grip-feedback.js       measured hand-load and confirmed tear cues
 src/fray-material.js       material-specific fringe, filament and rod reconstruction fits
 src/tail-memory.js         bounded persistent free-tail identity and damped bending modes (WGSL)
 src/airflow.js             one shared physical airflow field for cloth and reconstructed yarns
+src/yarn-release.js        physical-time cohesive softening and friction-gated crossing slip
+src/free-yarn.js           detached yarn reconstruction, air drag, length and contact constraints
+src/burn.js                material heat/fuel/char, actual yarn consumption and procedural flame/smoke plumes
 src/audio-preparation.js   tear-recording worker lifecycle and transferable channel copies
 src/audio-preparation-worker.js / src/tear-source.js  off-thread sample mixing, filtering and normalization
 src/tear-feedback.js       brief touch haptics driven by confirmed fabric separation
@@ -220,6 +231,29 @@ These are local appearance/reconstruction fits, not measured fibre properties. T
 lattice continues to carry yarn loads and determine rupture/pull-out. Reconstructed tails and
 slack bridges do not add load-bearing particles or feed new forces back into the sheet. The
 cache falls back to an equilibrium rod if its bounded probe cannot reserve a slot.
+
+Stress-driven cohesive damage now approaches its original force/strain target over a short physical
+response time. A free end accumulates slip through a crossing only while the original shear-lag energy
+can overcome its friction; a released or subcritical pull does not unzip the fabric by itself. Strength
+and crimp laws are unchanged. Slip can travel up to 64 crossings from a cut. Both timing and mobility
+are graphic-model fits. Completely freed yarns use unanchored particles in the same bounded history
+cache; they inherit solver motion, fall, catch airflow and meet cloth/floor contacts. Their position
+constraints preserve segment length and the free chain's centre of mass before contact.
+
+Fire stores temperature, consumed fuel, char and reaction rate per mechanical node. Separate GPU
+passes advance a fixed-time thermal snapshot, commit it, then reduce each fine crossing's remaining
+section and sever consumed yarns before normal damage/coupling. Heat transfer uses current spatial
+distances and normalized neighbor weights, with upward preheat and airflow cooling. Thus distant torn
+pieces cannot heat each other through their old material adjacency. Char remains after cooling, and
+active heat keeps the simulation awake. Igniters use cancellable GPU surface picks and follow the
+picked material while it moves. No heat exists before the first actual hit.
+
+The temperature/rate/char profiles are qualitative textile fits, not calibrated fire properties.
+Flames and smoke are procedural buoyant plumes driven by the actual reaction and shared airflow;
+this is not a volumetric combustion-fluid solver. [NIST's textile work](https://www.nist.gov/publications/airflow-extinguishment-burning-apparel-fabrics-final-report)
+and its [material-calibration research](https://www.nist.gov/programs-projects/impact-material-composition-ignitability-and-fire-growth)
+describe why airflow, structure and measured material parameters matter. [Stanford's fire model](https://graphics.stanford.edu/~henrik/papers/fire/)
+provides the physical context for buoyant flame motion.
 
 ### Drape files and the warm start
 

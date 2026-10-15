@@ -91,7 +91,7 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
     const records = new Uint32Array(8),
       geo = new Float32Array(80);
     ordered.forEach((r, i) => {
-      records.set([r.heldB ? 32 : 128, ((r.pos ?? 40) << 16) | r.yarn, r.n ?? 30, 0], 4 * i);
+      records.set([r.detached ? 160 : r.heldB ? 32 : 128, ((r.pos ?? 40) << 16) | r.yarn, r.n ?? 30, 0], 4 * i);
       geo.set([0, 39, -1, r.len], 40 * i);
       geo.set([...r.q, 0], 40 * i + 28);
       geo.set([r.heldB ? -1 : 1, 0, 0, 0], 40 * i + 32);
@@ -125,13 +125,14 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
       const p = points.slice(slot * 68, slot * 68 + 68);
       byYarn[rod.label ?? rod.yarn] = Array.from(p);
       assert(p.every(Number.isFinite), "finite rod points");
-      assert(
-        rod.q.every((q, k) => Math.abs(p[k] - q) < 1e-7),
-        "exactly attached root",
-      );
+      assert(rod.detached || rod.q.every((q, k) => Math.abs(p[k] - q) < 1e-7), "exactly attached root");
       for (let j = 1; j <= 16; j++) {
         const length = Math.hypot(...[0, 1, 2].map((k) => p[4 * j + k] - p[4 * (j - 1) + k]));
-        assert(Math.abs(length - rod.len / 16) < 2e-7, "free rods conserve segment length");
+        assert(
+          Math.abs(length - rod.len / 16) < (rod.detached ? 3e-6 : 2e-7),
+          "free rods conserve segment length: " +
+            JSON.stringify({ frame, yarn: rod.yarn, j, length, expected: rod.len / 16, detached: rod.detached }),
+        );
       }
     });
     assert(errors.length === 0, errors.join("\n"));
@@ -210,6 +211,34 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
           Math.abs(memory[movingSlot * 148 + 80 + 4 * i + k] - [0.03, 0.08, -0.04][k]) < 1e-6,
           "newly freed yarn inherits solver velocity",
         );
+    const detachedClear = device.createCommandEncoder();
+    detachedClear.clearBuffer(buffers[10]);
+    device.queue.submit([detachedClear.finish()]);
+    Object.assign(rods[0], { detached: true, heldB: false, pos: 40, n: 30, len: 0.03, q: [0, 0, 0.08] });
+    Object.assign(rods[1], { detached: true, q: [0.09, 0, 0.1] });
+    rf[112] = -0.15;
+    rf[113] = 1;
+    const freeBorn = await step({ dt: 0 });
+    for (let i = 0; i < 15; i++) await step({ dt: 1 / 120 });
+    const falling = await step({ dt: 1 / 120 });
+    assert(
+      falling[10][2] < freeBorn[10][2] - 0.02 && falling[10][66] < freeBorn[10][66] - 0.02,
+      "a fully freed yarn falls at both ends instead of vanishing or remaining clamped",
+    );
+    const freePaused = await step({ dt: 0 });
+    assert(JSON.stringify(falling) === JSON.stringify(freePaused), "detached yarns freeze on pause");
+    rods[0].detached = false; rods[0].heldB = true;
+    await step({dt:1/120});
+    rods[0].detached = true;
+    const freeAgain = await step({dt:1/120});
+    assert(freeAgain[10][2] < falling[10][2] + .01, "a free fragment cannot inherit clamped-root correction velocity from a neighboring held run");
+    for (let i = 0; i < 20; i++) await step({ dt: 1 / 120, wind: 8 });
+    for (let i = 0; i < 80; i++) await step({ dt: 1 / 120 });
+    const landed = await step({ dt: 1 / 120 });
+    assert(
+      landed[10].every((v, i) => i % 4 !== 2 || v >= -0.150001),
+      "detached yarns collide with the floor",
+    );
     // Compile and execute scalar bounds against the exact production helpers.
     const helpers = await pipeline("bending and bridge invariants", responseCode, "check");
     const output = make(64 * 16);

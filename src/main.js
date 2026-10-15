@@ -345,6 +345,10 @@ const TOOL_GUIDES = {
   fist: [`Pack a little punch.`, `Click or tap the fabric to punch through it.`],
   pin: [`Hold it right there.`, `Tap to pin a point, then use Hand to pull. Tap a pin again to release it.`],
   air: [`Let it breathe.`, `Cut a flap, then hold to lift it. Release to let it fall.`],
+  fire: [
+    `Start a slow burn.`,
+    `Hold on the fabric to ignite it. Heat chars and weakens the yarns; flames follow the weave.`,
+  ],
 };
 function toast(message, duration = 3200) {
   clearTimeout(toastTimer);
@@ -534,6 +538,13 @@ const gripFeedback = createGripFeedback({
 });
 let canvasAudioAbort;
 const airPointers = new Set();
+const firePointers = new Set();
+function updateFireHint() {
+  const active = currentTool === `fire` && firePointers.size > 0;
+  document.querySelector(`.interaction-guide`).classList.toggle(`fire-active`, active);
+  if (currentTool === `fire`)
+    document.querySelector(`.guide-title`).textContent = active ? `Hold to ignite.` : TOOL_GUIDES.fire[0];
+}
 function updateAirHint() {
   const active = currentTool === `air` && airPointers.size > 0;
   document.querySelector(`.interaction-guide`).classList.toggle(`air-active`, active);
@@ -546,6 +557,11 @@ function j(e, t) {
     if (e === `down`) airPointers.add(t.pointerId);
     if (e === `up` || e === `cancel`) airPointers.delete(t.pointerId);
     updateAirHint();
+  }
+  if (currentTool === `fire`) {
+    if (e === `down`) firePointers.add(t.pointerId);
+    if (e === `up` || e === `cancel`) firePointers.delete(t.pointerId);
+    updateFireHint();
   }
   if (currentTool === `hand`) gripFeedback.pointer(e, t);
   tearFeedback.pointer(e, t);
@@ -565,6 +581,8 @@ function j(e, t) {
 function cancelStagePointer(time) {
   airPointers.clear();
   updateAirHint();
+  firePointers.clear();
+  updateFireHint();
   gripFeedback.reset();
   tearFeedback.reset();
   C({ type: `pointer`, phase: `cancel`, id: -1, preservePins: true, seq: k++, time: A(time), x: 0, y: 0 });
@@ -666,7 +684,7 @@ for (let e of fabricButtons)
     toast(`Fresh ${FABRIC_NAMES[fabric]}. Make something of it.`);
   }));
 // ---------------------------------------------------------------- tools menu
-const TOOL_NAMES = { hand: `Hand`, blade: `Knife`, claw: `Claw`, fist: `Fist`, pin: `Pin`, air: `Air` };
+const TOOL_NAMES = { hand: `Hand`, blade: `Knife`, claw: `Claw`, fist: `Fist`, pin: `Pin`, air: `Air`, fire: `Fire` };
 function toolGuide(tool) {
   return tool === `air` && mount === `hanging`
     ? [`Let it breathe.`, `Hold and sweep to billow the cloth. Release to let it settle.`]
@@ -1214,6 +1232,7 @@ function shortcut(e) {
     4: `fist`,
     5: `pin`,
     6: `air`,
+    7: `fire`,
     k: `blade`,
     c: `claw`,
     b: `fist`,
