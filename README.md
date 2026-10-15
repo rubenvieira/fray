@@ -1,6 +1,6 @@
 # Fray
 
-Rip real fabric in your browser. Tartan, satin, linen and burlap are woven thread by thread and
+Rip real fabric in your browser. Twelve fabrics, from tartan and madras to shot silk and ripstop, are woven thread by thread and
 simulated on your **WebGPU**: pull it, slash it, hear it tear, share the damage.
 
 The engine is a yarn-level cloth solver: every warp and weft yarn is simulated and rendered, so a
@@ -18,12 +18,14 @@ opening does not grow a second broken-end tuft at its root. Loose ends now lag, 
 and settle; threads held at both ends can sag without acquiring extra length. When the last crossing
 releases, a yarn keeps its existing bend and motion instead of restarting as a straight fragment.
 
-- **Explore** opens three ready-to-play studies: **Ribbons in motion** (satin, knife, breeze, slow
+- **Explore** opens five ready-to-play studies: **Color comes apart** (madras, a slit and opposing pulls),
+  **A change of silk** (shot silk, hand, breeze), **Ribbons in motion** (satin, knife, breeze, slow
   motion), **Storm study** (gauze, claw, gale), and **Golden hour** (lamé, hand, breeze, slow motion).
   Each starts a fresh sheet and clears the current photo print. The guidance is a starting point;
   you can change tools and effects or dismiss it whenever you like.
 - **Frame a moment** pauses the cloth while you compose a shot. Drag to orbit, scroll or pinch to
-  zoom, and try Front, Angle, Detail, or Fit. **Capture frame** exports the image without the score
+  zoom, and try Front, Angle, Detail, or Fit. Detail follows the current position of the last yarn you
+  touched, so a moved tear remains the subject. **Capture frame** exports the image without the score
   overlay. **Back to play** or `Esc` resumes the fabric; `Space` toggles framing when the canvas
   has focus. Pins stay anchored when you change tools, frame a shot, or switch browser tabs.
 - **Collection** keeps up to 12 snapshots or frames in this browser using IndexedDB. Choose
@@ -50,7 +52,7 @@ releases, a yarn keeps its existing bend and motion instead of restarting as a s
 - **Effects** (Effects menu): **wind** (`W`: off, breeze, gale) travels through the folds in coherent
   eddies, easing in and out instead of jolting the cloth. Open weaves pass more air; separated yarns
   stop acting as intact sails. **Slow motion** (`T`) runs the simulation at a fifth of real time; **shake** (`X`) throws
-  the sheet.
+  the sheet. **Raking light** moves the key light across the weave to bring out ridges and loose fibers.
 - **Orbit**: right-drag or the arrow keys turn the camera; scroll zooms. The **View** buttons under
   Fabric also rotate and zoom. On touch screens, use two fingers to orbit and pinch to zoom; one
   finger uses your current tool. After a camera gesture, lift both fingers before tearing again.
@@ -61,13 +63,19 @@ releases, a yarn keeps its existing bend and motion instead of restarting as a s
   straight), **linen** (ecru plain-weave canvas), **burlap** (plain-weave jute hessian: coarse, open,
   brittle, frays a lot), **chiffon** (sheer silk crepe, tears like tissue), **gauze** (open
   cheesecloth that ladders before it breaks), **lamé** (gold metallic satin) and **ballistic**
-  nylon (the challenge fabric: it very nearly does not tear).
+  nylon (the challenge fabric: it very nearly does not tear), **indigo denim** (the original twill),
+  **madras** (soft, colorful cotton plaid), **shot silk** (teal warp and magenta weft catch the light
+  separately), and **ripstop** (lime nylon with stronger yarns in a fine grid).
 - **Shred score**: a live count of threads shredded (yarns ruptured plus yarns pulled out of the
   weave, from the solver's own counters) with a clock that starts at your first touch, and a verdict
   tier from Gentle to Absolute unit.
 - **Record** (dock button or `V`): records a clip of up to 20 seconds, with the tearing sound, as an
-  MP4 (H.264 + AAC, the format X accepts), then offers it in the sheet to save, share natively on
+  MP4 (H.264, with AAC when available), then offers it in the sheet to save, share natively on
   phones, or post (X's web intent can't attach a file, so you save and add it to the post).
+- **Clip shapes** (Effects): Screen uses the full canvas; Landscape exports 1280×720, Square
+  1080×1080, and Portrait 720×1280. The crop guide matches both clean frames and clips and
+  stays out of the export. Orbit or use Detail to compose inside it. Encoding resolution does not
+  guarantee a recording frame rate; the clip follows the frames the device actually renders.
 - **Save / share** (Save a picture in the Play bar, or `S`): grabs the frame, composes a 1200x675 card with your score, time,
   fabric and verdict, and offers Post on X (pre-written text), the native share sheet with the image
   on phones, or saving the PNG. `R` resets, `Esc` closes.
@@ -79,8 +87,15 @@ releases, a yarn keeps its existing bend and motion instead of restarting as a s
   finish an active recording before switching.
 
 The simulation core descends from [denim.scottsun.io](https://denim.scottsun.io) (a denim tear
-simulation, reproduced from its deployed build); the denim preset is kept in the code as the
-reference drape every other fabric is warm-started from, but is not offered in the menu.
+simulation, reproduced from its deployed build); the denim preset is also available in the Fabric menu.
+
+The added materials are fitted artistic models, not measured textile specifications. Madras changes
+plain-weave compliance, strength and yarn dimensions; shot silk shades the two dyed yarn families
+separately under the actual scene lights, with a fitted longitudinal dyed-scattering lobe. Ripstop strengthens two yarns out of every sixteen in
+both directions by 3.2×, in the same grid drawn on the fabric. Its bending and mass use the fitted
+nylon substrate values, so this is a tear-resisting grid rather than a full reinforced-yarn model.
+A knife can still sever those stronger yarns. New materials include settled drapes for both mounts,
+source-colored fraying and material-specific heat behavior.
 
 ## Requirements
 
@@ -98,7 +113,7 @@ npm test           # input, interaction, hand-motion, haptic and audio behavior 
 npm run test:gpu   # optional WebGPU checks: yarn mechanics, fibre colour and airflow; requires Playwright
 ```
 
-The GPU checks compile the production grip, yarn-damage, loose-thread, fringe, tail preparation,
+The GPU checks compile the production cloth surface, grip, yarn-damage, loose-thread, fringe, tail preparation,
 mount, floor and airflow shaders and run force, fibre-colour and aerodynamic cases on SwiftShader.
 Persistent-rod checks exercise colliding cache buckets, reordered runs, gravity, shared airflow,
 release, growing frays at either held end, inherited release velocity, fixed roots, segment lengths,
@@ -127,6 +142,8 @@ src/style.css              responsive interface styling (Anton/Oswald type, mate
 src/main.js                main thread: canvas + OffscreenCanvas handoff, pointer/wheel/visibility plumbing,
                            AudioContext + tear-sound engine (TearAudio), interface state, accessible menus and dialogs
 src/gestures.js            pointer routing: cloth manipulation, frame orbit, two-finger orbit and pinch zoom
+src/material-library.js    additional material mechanics, reinforcement grid and yarn colors
+src/capture-format.js      shared export dimensions and center-crop geometry
 src/hand.js                acceleration-limited grip motion with discrete braking
 src/mount.js               stretched/hanging boundary conditions, initial pleat, tool frames, camera and rail
 src/grip-feedback.js       measured hand-load and confirmed tear cues

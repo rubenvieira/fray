@@ -1,3 +1,4 @@
+import { additionalPresets, reinforcementStrength, materialColourWGSL } from "../src/material-library.js";
 import { freeYarnWGSL } from "../src/free-yarn.js";
 import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "../src/tail-memory.js";
 import { frayMaterialWGSL } from "../src/fray-material.js";
@@ -11,6 +12,10 @@ import vm from "node:vm";
 
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
 const scope = vm.createContext({
+  additionalPresets,
+  reinforcementStrength,
+  materialColourWGSL,
+  structuredClone,
   tailMemoryWGSL,
   TAIL_HISTORY_BYTES,
   frayMaterialWGSL,

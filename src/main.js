@@ -1,4 +1,6 @@
 import "./play-chrome-mount.js";
+import { ADDITIONAL_MATERIALS } from "./material-library.js";
+import { CAPTURE_FORMATS, captureSize, captureCrop } from "./capture-format.js";
 import { ArrayBufferTarget, Muxer } from "mp4-muxer";
 import { bindStageGestures } from "./gestures.js";
 import { createCollection } from "./collection.js";
@@ -293,6 +295,8 @@ let pausePending = false;
 let pauseTimer = 0;
 let stageGestures = null;
 let gallery = null;
+let captureFormat = `screen`;
+let lightMode = `soft`;
 let activeExperiment = null;
 let pendingExperiment = null;
 let pendingSpecial = null;
@@ -300,6 +304,24 @@ let selectedView = null;
 const coarsePointer = matchMedia(`(pointer: coarse)`);
 const renderBudget = createRenderBudget();
 const EXPERIMENTS = {
+  cotton: {
+    name: `Color comes apart`,
+    fabric: `madras`,
+    mount: `hanging`,
+    tool: `blade`,
+    wind: 0,
+    slow: true,
+    tip: `Cut a short slit. Pin above it, pull below it, then frame the colored yarns in Detail.`,
+  },
+  shot: {
+    name: `A change of silk`,
+    fabric: `shot`,
+    mount: `hanging`,
+    tool: `hand`,
+    wind: 1,
+    slow: true,
+    tip: `Pull a fold toward you. Orbit to watch teal warp and magenta weft trade the light.`,
+  },
   ribbons: {
     name: `Ribbons in motion`,
     fabric: `satin`,
@@ -329,6 +351,8 @@ const EXPERIMENTS = {
   },
 };
 const FABRIC_NAMES = {
+  denim: `Indigo denim`,
+  ...Object.fromEntries(ADDITIONAL_MATERIALS.map((m) => [m.key, m.name])),
   tartan: `Tartan`,
   satin: `Satin`,
   linen: `Linen`,
@@ -470,6 +494,7 @@ function finishExperiment() {
   toast(`${experiment.name}. Your experiment starts here.`);
 }
 function T() {
+  updateCaptureGuide();
   let e = Math.max(1, window.innerWidth),
     t = Math.max(1, window.innerHeight),
     { width: n, height: r } = p(e, t, window.devicePixelRatio);
@@ -705,6 +730,7 @@ function updateEffects() {
   const effects = [
     windLevel ? `${[``, `Breeze`, `Gale`][windLevel]} on` : ``,
     slowMotion ? `Slow motion · 0.2×` : ``,
+    lightMode === `raking` ? `Raking light` : ``,
   ].filter(Boolean);
   summary.textContent = effects.join(` · `);
   summary.hidden = !effects.length;
@@ -721,6 +747,12 @@ function setSlow(e) {
   toolsMenu.querySelector(`[data-fx="slow"]`).setAttribute(`aria-checked`, String(slowMotion));
   updateEffects();
   C({ type: `time`, scale: slowMotion ? 0.2 : 1 });
+}
+function setLighting(mode) {
+  lightMode = mode;
+  document.querySelector(`[data-lighting]`).setAttribute(`aria-checked`, String(mode === `raking`));
+  updateEffects();
+  C({ type: `lighting`, mode });
 }
 var toolsOpen = () => !toolsMenu.hasAttribute(`hidden`);
 function openTools(e) {
@@ -793,6 +825,7 @@ function onWorkerMessage(e) {
         // Tool and effect handlers need the initialized solver/body. Restore them
         // only after the new worker reports ready, never alongside async init.
         setTool(currentTool);
+        setLighting(lightMode);
         setWind(windLevel);
         setSlow(slowMotion);
         sendView({ type: `camera`, preset: `reset` });
@@ -1004,17 +1037,50 @@ function fabricLabel() {
   return FABRIC_NAMES[fabric];
 }
 function snapshotMetadata(kind = `image`) {
-  return { fabric: fabricLabel(), score: shred.target, seconds: shredSeconds(), kind };
+  return { fabric: fabricLabel(), fabricKey: fabric, mount, score: shred.target, seconds: shredSeconds(), kind };
+}
+function shareURL(metadata) {
+  const url = new URL(SITE);
+  const key = metadata.fabricKey || Object.keys(FABRIC_NAMES).find((key) => FABRIC_NAMES[key] === metadata.fabric);
+  if (key && Object.hasOwn(FABRIC_NAMES, key)) url.searchParams.set(`fabric`, key);
+  if (metadata.mount) url.searchParams.set(`mount`, metadata.mount);
+  return url.href;
 }
 function shareText(metadata = snapshotMetadata()) {
   if (metadata.kind === `frame`)
-    return `A moment, unraveled. ${metadata.fabric}, shaped and framed in ${BRAND}. ${SITE} ${TAG}`;
+    return `A moment, unraveled. ${metadata.fabric}, shaped and framed in ${BRAND}. ${shareURL(metadata)} ${TAG}`;
   let e = metadata.score,
     t =
       e > 0
         ? `I ripped ${e.toLocaleString()} threads of ${metadata.fabric} in ${fmtTime(metadata.seconds)} on ${BRAND}. Verdict: ${verdict(e)}.`
         : `${BRAND}: real ${metadata.fabric}, woven thread by thread, torn in your browser.`;
-  return `${t} 🧵✂️ Think you can do worse? ${SITE} ${TAG}`;
+  return `${t} 🧵✂️ Think you can do worse? ${shareURL(metadata)} ${TAG}`;
+}
+function updateCaptureGuide() {
+  const guide = document.querySelector(`.capture-guide`);
+  if (!guide) return;
+  guide.hidden = captureFormat === `screen`;
+  if (guide.hidden) return;
+  const size = captureSize(captureFormat, innerWidth, innerHeight);
+  const crop = captureCrop(innerWidth, innerHeight, size.width, size.height);
+  Object.assign(guide.style, {
+    left: `${crop.x}px`,
+    top: `${crop.y}px`,
+    width: `${crop.width}px`,
+    height: `${crop.height}px`,
+  });
+  guide.querySelector(`span`).textContent = CAPTURE_FORMATS[captureFormat].name;
+}
+async function composeFrame(blob, format) {
+  if (format === `screen`) return blob;
+  const image = await createImageBitmap(blob);
+  const size = captureSize(format, image.width, image.height);
+  const crop = captureCrop(image.width, image.height, size.width, size.height);
+  const canvas = document.createElement(`canvas`);
+  Object.assign(canvas, size);
+  canvas.getContext(`2d`).drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, size.width, size.height);
+  image.close();
+  return new Promise((resolve) => canvas.toBlob(resolve, `image/png`));
 }
 function requestCard() {
   if (!engineReady || activeDialog || pendingCapture || pausePending) return;
@@ -1025,6 +1091,7 @@ function requestCard() {
   restoreRenderResolution();
   pendingCapture = true;
   captureMetadata = snapshotMetadata(framing ? `frame` : `image`);
+  captureMetadata.format = captureFormat;
   captureVersion++;
   (shareButton.setAttribute(`aria-busy`, `true`),
     P(!1),
@@ -1099,7 +1166,8 @@ async function onCapture(e, id) {
   const metadata = captureMetadata;
   try {
     if (!e) throw Error(`No frame available`);
-    let t = metadata.kind === `frame` ? e : await composeCard(e, metadata);
+    let t =
+      metadata.kind === `frame` ? await composeFrame(e, metadata.format || `screen`) : await composeCard(e, metadata);
     if (version !== captureVersion) return;
     if (!t) throw Error(`Image could not be created`);
     clearTimeout(captureTimer);
@@ -1303,6 +1371,7 @@ function onRecordState(e) {
     rec.timer = setTimeout(() => stopRecording(), 1e3 * e.maxSeconds + 200);
   } else if (e.state === `stopped`) rec && finishRecording(e);
   else if (e.state === `failed`) {
+    C({ type: `record`, action: `stop` });
     (abortRecording(), toast(e.message ?? `Recording is unavailable in this browser. You can still save an image.`));
   }
 }
@@ -1422,7 +1491,7 @@ async function startRecording() {
     t?.stop().catch(() => {});
     return;
   }
-  ((e.audio = t), C({ type: `record`, action: `start` }));
+  ((e.audio = t), C({ type: `record`, action: `start`, format: captureFormat }));
 }
 function stopRecording() {
   if (!rec || rec.stopped) return;
@@ -1759,4 +1828,26 @@ sheet.querySelector(`.sheet-keep`).addEventListener(`click`, async () => {
   button.disabled = kept;
   button.textContent = kept ? `Kept in collection` : `Keep in collection`;
 });
+document
+  .querySelector(`[data-lighting]`)
+  .addEventListener(`click`, () => setLighting(lightMode === `soft` ? `raking` : `soft`));
+const initialFabric = new URLSearchParams(location.search).get(`fabric`);
+if (initialFabric && Object.hasOwn(FABRIC_NAMES, initialFabric)) fabric = initialFabric;
+for (const button of document.querySelectorAll(`[data-capture-format]`))
+  button.addEventListener(`click`, () => {
+    if (rec || pendingCapture) {
+      toast(`Finish the current capture before changing its shape.`);
+      return;
+    }
+    captureFormat = button.dataset.captureFormat;
+    for (const option of document.querySelectorAll(`[data-capture-format]`))
+      option.setAttribute(`aria-checked`, String(option === button));
+    updateCaptureGuide();
+    openTools(false);
+    toast(
+      captureFormat === `screen`
+        ? `Exports use the full canvas.`
+        : `${CAPTURE_FORMATS[captureFormat].name}. Use Detail to frame your latest tear.`,
+    );
+  });
 startWorker(fabric);

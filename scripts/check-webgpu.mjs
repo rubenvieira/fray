@@ -1,7 +1,8 @@
+import { additionalPresets, reinforcementStrength, materialColourWGSL } from "../src/material-library.js";
 import { freeYarnWGSL } from "../src/free-yarn.js";
 import { checkTails } from "./tail-checks.mjs";
 import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "../src/tail-memory.js";
-import { frayMaterialWGSL } from "../src/fray-material.js";
+import { frayMaterialWGSL, FRAY_MATERIALS } from "../src/fray-material.js";
 import { airflowWGSL } from "../src/airflow.js";
 import { releaseWGSL, pullMemoryBytes } from "../src/yarn-release.js";
 import { burnAppearanceWGSL, FabricFire, createFireView, burnComputeWGSL, flameWGSL } from "../src/burn.js";
@@ -18,6 +19,10 @@ import { checkRelease } from "./release-checks.mjs";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
 const context = vm.createContext({
+  additionalPresets,
+  reinforcementStrength,
+  materialColourWGSL,
+  structuredClone,
   tailMemoryWGSL,
   TAIL_HISTORY_BYTES,
   frayMaterialWGSL,
@@ -34,10 +39,11 @@ const context = vm.createContext({
 });
 // Evaluating declarations creates no GPU device or scene; init is message-driven.
 vm.runInContext(source.replace(/^import .*;\n/gm, ""), context);
-const { common, field, grip, thread, appearance, materials, drag, body, mount, floor, fringe, tail, prep } =
+const { common, field, grip, surface, thread, appearance, materials, drag, body, mount, floor, fringe, tail, prep } =
   vm.runInContext(
     `({
   common: _, field: ot, grip: R, appearance: oe, drag: Ct, body: nn,
+  surface: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + le + ce,
   thread: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + fe + he,
   fringe: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + ge,
   tail: Pe({layers:[{bundle:[5,5]}]}, false) + oe + me,
@@ -117,13 +123,14 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
   result[id.x] = vec4<f32>(base, force, recovered, damage);
 }`;
 const fibreCases = [];
-for (let material = 0; material < 9; material++)
+for (let material = 0; material < FRAY_MATERIALS.length; material++)
   for (const family of [0, 1]) {
     for (const yarn of [0, 23, 31, 40, 49, 98])
       for (let seed = 0; seed < 8; seed++) fibreCases.push([material, family, yarn, seed]);
   }
 const colourFunctions =
   frayMaterialWGSL +
+  materialColourWGSL +
   ["hash11", "hashf", "fabricRimPale", "fabricRimDyed", "tartanYarn", "frayedYarnReflectance", "looseFibreAlbedo"]
     .map((name) => shaderFunction(appearance, name))
     .join("\n");
@@ -244,6 +251,7 @@ try {
         modules: {
           "yarn field": common + field,
           grip: common + grip,
+          surface: surface,
           "loose threads": thread,
           mount,
           floor,
@@ -285,6 +293,8 @@ try {
     assert.deepEqual(colour(2, 0, 0, seed), colour(2, 0, 98, seed), "tartan repeats its sett");
     assert.notDeepEqual(colour(2, 0, 0, seed), colour(2, 0, 23, seed), "red and green yarns keep distinct hairs");
     assert.notDeepEqual(colour(1, 1, 0, seed), colour(0, 1, 0, seed), "burlap hair does not become denim");
+    assert.notDeepEqual(colour(9, 0, 0, seed), colour(9, 0, 23, seed), "madras frays preserve the colored source yarn");
+    assert.notDeepEqual(colour(10, 0, 0, seed), colour(10, 1, 0, seed), "shot silk keeps distinct warp and weft dyes");
     const denimWeft = colour(0, 0, 0, seed);
     assert.ok(Math.abs(denimWeft[0] - 0.44) < 1e-6 && Math.abs(denimWeft[2] - 0.43) < 1e-6);
   }
@@ -312,7 +322,7 @@ try {
     }
   }
   console.log(
-    `GPU checks passed: 11 production modules compiled, ${cases.length} force cases, ${fibreCases.length} loose-fibre and ${fibreCases.length} fringe colours.`,
+    `GPU checks passed: 12 production modules compiled, ${cases.length} force cases, ${fibreCases.length} loose-fibre and ${fibreCases.length} fringe colours.`,
   );
   console.log(`Adapter: ${result.description}. Correctness only; no real-phone performance claim.`);
   const feedback = await page.evaluate(checkGripFeedback, common + grip);

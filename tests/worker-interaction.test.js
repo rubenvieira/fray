@@ -1184,18 +1184,72 @@ function probeFixture() {
   return {
     ...f,
     maps,
-    async complete(index, ruptures, pulledOut, speed = 0.01, force = 0, tailSpeed = 0) {
-      buffer = new ArrayBuffer(224);
+    async complete(index, ruptures, pulledOut, speed = 0.01, force = 0, tailSpeed = 0, contact = null) {
+      buffer = new ArrayBuffer(256);
       new Uint32Array(buffer).set([ruptures, pulledOut]);
       new Float32Array(buffer)[2] = speed;
       new Float32Array(buffer)[7] = force;
       new Uint32Array(buffer, 208, 4)[2] = tailSpeed;
+      if (contact) new Float32Array(buffer, 240, 4).set(contact);
       maps[index].resolve();
       await flush();
     },
     unmaps: () => unmaps,
   };
 }
+
+test("Detail targets the current material position and retired or reset contact cannot hijack it", async () => {
+  const f = probeFixture();
+  f.engine.solver.N = 4;
+  f.engine.rememberContact({ node: 2, position: [0.1, 0.02, -0.2] });
+  f.engine.probeRest(2);
+  await f.complete(0, 0, 0, 0.01, 0, 0, [0.12, 0.03, -0.25, 0]);
+  f.engine.setCamera("detail");
+  for (const [i, value] of [0.12, 0.03, -0.25].entries()) assert.ok(Math.abs(f.engine.camera.target[i] - value) < 1e-6);
+  f.engine.probeRest(2);
+  await f.complete(1, 0, 0, 0.01, 0, 0, [0.12, 0.03, -0.25, 2]);
+  assert.equal(f.engine.contact, null);
+  f.engine.rememberContact({ node: 1, position: [0.2, 0, -0.1] });
+  f.engine.reset();
+  assert.equal(f.engine.contact, null);
+});
+
+test("a delayed contact probe cannot overwrite a newer touch", async () => {
+  const f = probeFixture();
+  f.engine.solver.N = 4;
+  f.engine.rememberContact({ node: 1, position: [0.1, 0, -0.1] });
+  f.engine.probeRest(2);
+  f.engine.rememberContact({ node: 3, position: [-0.1, 0, -0.3] });
+  await f.complete(0, 0, 0, 0.01, 0, 0, [0.5, 0, -0.5, 0]);
+  assert.equal(f.engine.contact.node, 3);
+  assert.deepEqual(plain(f.engine.contact.position), [-0.1, 0, -0.3]);
+});
+
+test("raking light is reversible and repeated selection cannot accumulate dimming", () => {
+  const f = fixture();
+  Object.assign(f.engine.renderer, {
+    keyOffset: [-0.25, -0.55, 0.35],
+    keyIntensity: 6,
+    ambient: [0.03, 0.035, 0.05],
+    overIntensity: 0.1,
+  });
+  const original = plain({
+    keyOffset: f.engine.renderer.keyOffset,
+    keyIntensity: 6,
+    ambient: f.engine.renderer.ambient,
+    overIntensity: 0.1,
+  });
+  f.engine.setLighting("raking");
+  const first = plain(f.engine.renderer.keyOffset);
+  const firstIntensity = f.engine.renderer.keyIntensity;
+  assert.ok(firstIntensity > 0 && firstIntensity < original.keyIntensity);
+  f.engine.setLighting("raking");
+  assert.deepEqual(plain(f.engine.renderer.keyOffset), first);
+  assert.equal(f.engine.renderer.keyIntensity, firstIntensity);
+  f.engine.setLighting("soft");
+  for (const [key, value] of Object.entries(original)) assert.deepEqual(plain(f.engine.renderer[key]), value);
+  assert.equal(f.engine.grips.size, 0);
+});
 
 test("damage probes emit real counter deltas once, including while sound is unavailable", async () => {
   const f = probeFixture();

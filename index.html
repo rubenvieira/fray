@@ -7,7 +7,7 @@
     <title>Fray — Rip Real Fabric</title>
     <meta
       name="description"
-      content="Rip real fabric in your browser. Tartan, satin, linen and burlap woven thread by thread and simulated on your GPU: pull it, slash it, hear it tear, share the damage."
+      content="Pull apart twelve woven fabrics. Catch loose yarns in the breeze, frame the fraying, and share portrait or square clips from your browser."
     />
     <meta name="robots" content="index, follow" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
@@ -17,19 +17,22 @@
     <meta property="og:title" content="Fray — Rip Real Fabric" />
     <meta
       property="og:description"
-      content="Woven thread by thread and simulated on your GPU. Pull it, slash it, hear it tear, share the damage."
+      content="Twelve woven fabrics. Real tears, loose yarns and glorious fraying. Make a clip. Pull someone in."
     />
-    <meta property="og:image" content="/og.png" />
-    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image" content="https://play.rubenv.net/fray/social-card.jpg" />
+    <meta property="og:url" content="https://play.rubenv.net/fray/" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:alt" content="Fray: torn fabric, thread by thread" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Fray — Rip Real Fabric" />
     <meta
       name="twitter:description"
-      content="Woven thread by thread and simulated on your GPU. Pull it, slash it, hear it tear, share the damage."
+      content="Twelve woven fabrics. Real tears, loose yarns and glorious fraying. Make a clip. Pull someone in."
     />
-    <meta name="twitter:image" content="/og.png" />
+    <meta name="twitter:image" content="https://play.rubenv.net/fray/social-card.jpg" />
     <meta name="twitter:image:alt" content="Fray: torn fabric, thread by thread" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -41,6 +44,7 @@
     <script type="module" src="/src/main.js"></script>
   </head>
   <body class="loading">
+    <div class="capture-guide" aria-hidden="true" hidden><span></span></div>
 
     <aside class="score" aria-label="Your session">
       <span class="score-verdict">Untouched</span>
@@ -131,7 +135,10 @@
             ><span class="tool-name">Pin</span>
           </button>
           <button class="toolitem" type="button" data-tool="air" aria-pressed="false" title="Air: lift and flutter (6)">
-            <kbd>6</kbd><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h12a3 3 0 1 0-3-3M3 12h16a2 2 0 1 1-2 2M3 16h6a3 3 0 1 1-3 3" /></svg>
+            <kbd>6</kbd
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 8h12a3 3 0 1 0-3-3M3 12h16a2 2 0 1 1-2 2M3 16h6a3 3 0 1 1-3 3" />
+            </svg>
             <span class="tool-name">Air</span>
           </button>
           <button class="toolitem" type="button" data-tool="fire" aria-pressed="false" title="Fire: hold to ignite (7)">
@@ -144,177 +151,270 @@
           </button>
         </div>
         <span class="pc-sep"></span>
-    <div class="fabric-picker">
-      <button
-        class="menu"
-        type="button"
-        aria-label="Choose fabric: Tartan"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-controls="experiences"
-      >
-        <span class="current-swatch fabric-swatch" data-fabric="tartan" aria-hidden="true"></span>
-        <span class="fabric-selection"
-          ><span class="control-label current-setup">Stretched</span><span class="current-fabric">Tartan</span></span
-        >
-        <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
-      </button>
-      <ul class="experiences pc-menu pc-glass" id="experiences" role="menu" aria-label="Choose your fabric" hidden>
-        <li class="menu-intro" role="none">
-          <span class="eyebrow">The material library</span>
-          <p>Changing fabric or setup starts a fresh sheet.</p>
-        </li>
-        <li role="none">
-          <div class="mount-options" role="group" aria-label="Fabric setup">
-            <button class="experience" type="button" role="menuitemradio" data-mount="frame" aria-checked="true">Stretched</button>
-            <button class="experience" type="button" role="menuitemradio" data-mount="hanging" aria-checked="false">Hanging</button>
-          </div>
-          <p class="setup-description">All edges held. Cut a flap or pull a tear.</p>
-        </li>
-        <li role="none">
-          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="true" data-fabric="tartan">
-            <span class="fabric-swatch" data-fabric="tartan" aria-hidden="true"></span
-            ><span class="option-copy"><strong>Tartan</strong><small>Wool · a classic with give</small></span
-            ><span class="selection-mark" aria-hidden="true">✓</span>
-          </button>
-        </li>
-        <li role="none">
+        <div class="fabric-picker">
           <button
-            class="experience fabric"
+            class="menu"
             type="button"
-            role="menuitemradio"
-            aria-checked="false"
-            data-fabric="burlap"
+            aria-label="Choose fabric: Tartan"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="experiences"
           >
-            <span class="fabric-swatch" data-fabric="burlap" aria-hidden="true"></span
-            ><span class="option-copy"><strong>Burlap</strong><small>Coarse, rustic weave</small></span
-            ><span class="selection-mark" aria-hidden="true">✓</span>
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="linen">
-            <span class="fabric-swatch" data-fabric="linen" aria-hidden="true"></span
-            ><span class="option-copy"><strong>Linen</strong><small>Crisp, natural threads</small></span
-            ><span class="selection-mark" aria-hidden="true">✓</span>
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="satin">
-            <span class="fabric-swatch" data-fabric="satin" aria-hidden="true"></span
-            ><span class="option-copy"><strong>Satin</strong><small>Smooth, flowing silk</small></span
-            ><span class="selection-mark" aria-hidden="true">✓</span>
-          </button>
-        </li>
-        <li role="none">
-          <button
-            class="experience fabric"
-            type="button"
-            role="menuitemradio"
-            aria-checked="false"
-            data-fabric="chiffon"
-          >
-            <span class="fabric-swatch" data-fabric="chiffon" aria-hidden="true"></span
-            ><span class="option-copy"><strong>Chiffon</strong><small>Light, delicate silk</small></span
-            ><span class="selection-mark" aria-hidden="true">✓</span>
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="gauze">
-            <span class="fabric-swatch" data-fabric="gauze" aria-hidden="true"></span
-            ><span class="option-copy"><strong>Gauze</strong><small>Airy, open weave</small></span
-            ><span class="selection-mark" aria-hidden="true">✓</span>
-          </button>
-        </li>
-        <li role="none">
-          <button class="experience fabric" type="button" role="menuitemradio" aria-checked="false" data-fabric="lame">
-            <span class="fabric-swatch" data-fabric="lame" aria-hidden="true"></span
-            ><span class="option-copy"><strong>Lamé</strong><small>Metallic, fluid shimmer</small></span
-            ><span class="selection-mark" aria-hidden="true">✓</span>
-          </button>
-        </li>
-        <li role="none">
-          <button
-            class="experience fabric"
-            type="button"
-            role="menuitemradio"
-            aria-checked="false"
-            data-fabric="ballistic"
-          >
-            <span class="fabric-swatch" data-fabric="ballistic" aria-hidden="true"></span
-            ><span class="option-copy"><strong>Ballistic</strong><small>Dense nylon · extra tough</small></span
-            ><span class="selection-mark" aria-hidden="true">✓</span>
-          </button>
-        </li>
-        <li role="none" class="experiences-rule"></li>
-        <li role="none">
-          <button class="experience special-experience" type="button" role="menuitem" data-print="pick">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="8" cy="8" r="1.5" />
-              <path d="m3 17 5-5 4 4 4-6 5 7" /></svg
-            ><span class="option-copy"
-              ><strong>Print a photo</strong><small>Your image. Your canvas. Stays private.</small></span
+            <span class="current-swatch fabric-swatch" data-fabric="tartan" aria-hidden="true"></span>
+            <span class="fabric-selection"
+              ><span class="control-label current-setup">Stretched</span
+              ><span class="current-fabric">Tartan</span></span
             >
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
           </button>
-        </li>
-        <li role="none" hidden>
-          <button class="experience" type="button" role="menuitem" data-print="clear">Remove photo print</button>
-        </li>
-        <li role="none">
-          <button class="experience special-experience" type="button" role="menuitem" data-experience="beneath">
+          <ul class="experiences pc-menu pc-glass" id="experiences" role="menu" aria-label="Choose your fabric" hidden>
+            <li class="menu-intro" role="none">
+              <span class="eyebrow">The material library</span>
+              <p>Changing fabric or setup starts a fresh sheet.</p>
+            </li>
+            <li role="none">
+              <div class="mount-options" role="group" aria-label="Fabric setup">
+                <button class="experience" type="button" role="menuitemradio" data-mount="frame" aria-checked="true">
+                  Stretched
+                </button>
+                <button class="experience" type="button" role="menuitemradio" data-mount="hanging" aria-checked="false">
+                  Hanging
+                </button>
+              </div>
+              <p class="setup-description">All edges held. Cut a flap or pull a tear.</p>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="true"
+                data-fabric="tartan"
+              >
+                <span class="fabric-swatch" data-fabric="tartan" aria-hidden="true"></span
+                ><span class="option-copy"><strong>Tartan</strong><small>Wool · a classic with give</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="burlap"
+              >
+                <span class="fabric-swatch" data-fabric="burlap" aria-hidden="true"></span
+                ><span class="option-copy"><strong>Burlap</strong><small>Coarse, rustic weave</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="denim"
+              >
+                <span class="fabric-swatch" data-fabric="denim" aria-hidden="true"></span
+                ><span class="option-copy"
+                  ><strong>Indigo denim</strong><small>Blue cotton twill · pale cores pull free</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="madras"
+              >
+                <span class="fabric-swatch" data-fabric="madras" aria-hidden="true"></span
+                ><span class="option-copy"
+                  ><strong>Madras</strong><small>Colorful cotton · soft, uneven frays</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="shot"
+              >
+                <span class="fabric-swatch" data-fabric="shot" aria-hidden="true"></span
+                ><span class="option-copy"
+                  ><strong>Shot silk</strong><small>Teal warp, magenta weft · color in every fold</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="ripstop"
+              >
+                <span class="fabric-swatch" data-fabric="ripstop" aria-hidden="true"></span
+                ><span class="option-copy"
+                  ><strong>Ripstop</strong><small>Lime nylon · a stronger grid catches the tear</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="linen"
+              >
+                <span class="fabric-swatch" data-fabric="linen" aria-hidden="true"></span
+                ><span class="option-copy"><strong>Linen</strong><small>Crisp, natural threads</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="satin"
+              >
+                <span class="fabric-swatch" data-fabric="satin" aria-hidden="true"></span
+                ><span class="option-copy"><strong>Satin</strong><small>Smooth, flowing silk</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="chiffon"
+              >
+                <span class="fabric-swatch" data-fabric="chiffon" aria-hidden="true"></span
+                ><span class="option-copy"><strong>Chiffon</strong><small>Light, delicate silk</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="gauze"
+              >
+                <span class="fabric-swatch" data-fabric="gauze" aria-hidden="true"></span
+                ><span class="option-copy"><strong>Gauze</strong><small>Airy, open weave</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="lame"
+              >
+                <span class="fabric-swatch" data-fabric="lame" aria-hidden="true"></span
+                ><span class="option-copy"><strong>Lamé</strong><small>Metallic, fluid shimmer</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none">
+              <button
+                class="experience fabric"
+                type="button"
+                role="menuitemradio"
+                aria-checked="false"
+                data-fabric="ballistic"
+              >
+                <span class="fabric-swatch" data-fabric="ballistic" aria-hidden="true"></span
+                ><span class="option-copy"><strong>Ballistic</strong><small>Dense nylon · extra tough</small></span
+                ><span class="selection-mark" aria-hidden="true">✓</span>
+              </button>
+            </li>
+            <li role="none" class="experiences-rule"></li>
+            <li role="none">
+              <button class="experience special-experience" type="button" role="menuitem" data-print="pick">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8" cy="8" r="1.5" />
+                  <path d="m3 17 5-5 4 4 4-6 5 7" /></svg
+                ><span class="option-copy"
+                  ><strong>Print a photo</strong><small>Your image. Your canvas. Stays private.</small></span
+                >
+              </button>
+            </li>
+            <li role="none" hidden>
+              <button class="experience" type="button" role="menuitem" data-print="clear">Remove photo print</button>
+            </li>
+            <li role="none">
+              <button class="experience special-experience" type="button" role="menuitem" data-experience="beneath">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M8 14a4 4 0 0 0 8 0M8 8v1m8-1v1" /></svg
+                ><span class="option-copy"
+                  ><strong>Meet Smilie</strong><small>Something is hiding beneath.</small></span
+                >
+              </button>
+            </li>
+          </ul>
+          <div class="camera-controls" role="group" aria-label="Camera controls">
+            <span class="control-label">View</span>
+            <button
+              class="camera-control"
+              type="button"
+              data-camera="left"
+              aria-label="Rotate view left"
+              title="Rotate left (←)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4-4 4 4 4M4 8h9a6 6 0 0 1 0 12h-2" /></svg>
+            </button>
+            <button
+              class="camera-control"
+              type="button"
+              data-camera="right"
+              aria-label="Rotate view right"
+              title="Rotate right (→)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 4 4 4-4 4M20 8h-9a6 6 0 0 0 0 12h2" /></svg>
+            </button>
+            <button class="camera-control" type="button" data-camera="zoom-out" aria-label="Zoom out" title="Zoom out">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
+            </button>
+            <button class="camera-control" type="button" data-camera="zoom-in" aria-label="Zoom in" title="Zoom in">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12M12 6v12" /></svg>
+            </button>
+            <button class="camera-control" type="button" data-camera="reset" aria-label="Reset view" title="Reset view">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </div>
+          <button
+            class="frame-toggle"
+            type="button"
+            aria-pressed="false"
+            title="Freeze the fabric to compose a shot (Space)"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M8 14a4 4 0 0 0 8 0M8 8v1m8-1v1" /></svg
-            ><span class="option-copy"><strong>Meet Smilie</strong><small>Something is hiding beneath.</small></span>
+              <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
+              <path d="M10 8v8m4-8v8" />
+            </svg>
+            <span>Frame a moment</span><kbd>Space</kbd>
           </button>
-        </li>
-      </ul>
-      <div class="camera-controls" role="group" aria-label="Camera controls">
-        <span class="control-label">View</span>
-        <button
-          class="camera-control"
-          type="button"
-          data-camera="left"
-          aria-label="Rotate view left"
-          title="Rotate left (←)"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4-4 4 4 4M4 8h9a6 6 0 0 1 0 12h-2" /></svg>
-        </button>
-        <button
-          class="camera-control"
-          type="button"
-          data-camera="right"
-          aria-label="Rotate view right"
-          title="Rotate right (→)"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 4 4 4-4 4M20 8h-9a6 6 0 0 0 0 12h2" /></svg>
-        </button>
-        <button class="camera-control" type="button" data-camera="zoom-out" aria-label="Zoom out" title="Zoom out">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
-        </button>
-        <button class="camera-control" type="button" data-camera="zoom-in" aria-label="Zoom in" title="Zoom in">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12M12 6v12" /></svg>
-        </button>
-        <button class="camera-control" type="button" data-camera="reset" aria-label="Reset view" title="Reset view">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </button>
-      </div>
-      <button
-        class="frame-toggle"
-        type="button"
-        aria-pressed="false"
-        title="Freeze the fabric to compose a shot (Space)"
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
-          <path d="M10 8v8m4-8v8" />
-        </svg>
-        <span>Frame a moment</span><kbd>Space</kbd>
-      </button>
-    </div>
+        </div>
         <span class="pc-sep"></span>
         <div class="dock-actions">
           <div class="effects-control">
@@ -331,7 +431,8 @@
               <li role="none">
                 <button class="experience fx" type="button" role="menuitem" data-fx="wind">
                   <span class="option-copy"
-                    ><strong class="fx-label">Wind: off</strong><small>Let the breeze catch the loose threads</small></span
+                    ><strong class="fx-label">Wind: off</strong
+                    ><small>Let the breeze catch the loose threads</small></span
                   ><kbd>W</kbd>
                 </button>
               </li>
@@ -346,6 +447,58 @@
                   <span class="option-copy"
                     ><strong>Shake fabric</strong><small>Give everything a little jolt</small></span
                   ><kbd>X</kbd>
+                </button>
+              </li>
+              <li role="none">
+                <button class="experience" type="button" role="menuitemcheckbox" aria-checked="false" data-lighting>
+                  <span class="option-copy"
+                    ><strong>Raking light</strong><small>Bring out the weave and loose fibers</small></span
+                  ><span class="fx-indicator" aria-hidden="true"></span>
+                </button>
+              </li>
+              <li class="menu-intro" role="none"><span class="eyebrow">Clips & clean frames</span></li>
+              <li role="none">
+                <button
+                  class="experience"
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked="true"
+                  data-capture-format="screen"
+                >
+                  <span class="option-copy"><strong>Screen</strong><small>Use the full canvas</small></span>
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  class="experience"
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked="false"
+                  data-capture-format="wide"
+                >
+                  <span class="option-copy"><strong>Landscape · 16:9</strong><small>1280 × 720</small></span>
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  class="experience"
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked="false"
+                  data-capture-format="square"
+                >
+                  <span class="option-copy"><strong>Square · 1:1</strong><small>1080 × 1080</small></span>
+                </button>
+              </li>
+              <li role="none">
+                <button
+                  class="experience"
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked="false"
+                  data-capture-format="portrait"
+                >
+                  <span class="option-copy"><strong>Portrait · 9:16</strong><small>720 × 1280</small></span>
                 </button>
               </li>
             </ul>
@@ -367,7 +520,13 @@
               <circle cx="12" cy="12" r="9" /></svg
             ><span class="record-label">Record</span>
           </button>
-          <button class="share share-proxy" type="button" title="Save or share your damage (S)" tabindex="-1" aria-hidden="true">
+          <button
+            class="share share-proxy"
+            type="button"
+            title="Save or share your damage (S)"
+            tabindex="-1"
+            aria-hidden="true"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 3.5v12m-4.2-7.8L12 3.5l4.2 4.2M5 13.5v6h14v-6" /></svg
             ><span>Save / share</span>
@@ -409,7 +568,14 @@
     </div>
 
     <div class="loading-panel">
-      <svg class="pc-logo" viewBox="0 0 235 184" aria-hidden="true"><path class="pc-r" d="M8 12H89C118 12 139 31 139 57C139 81 122 99 98 99H83.333L134 175H107L41.667 77H93C108 77 117 69 117 57C117 43 106 34 90 34H22.667Z"/><path class="pc-r" d="M181.2 42H207.4L132.9 166.167L119.1 145.5Z"/><path class="pc-dot" d="M200.4 10H226.6L212.2 34H186Z"/></svg>
+      <svg class="pc-logo" viewBox="0 0 235 184" aria-hidden="true">
+        <path
+          class="pc-r"
+          d="M8 12H89C118 12 139 31 139 57C139 81 122 99 98 99H83.333L134 175H107L41.667 77H93C108 77 117 69 117 57C117 43 106 34 90 34H22.667Z"
+        />
+        <path class="pc-r" d="M181.2 42H207.4L132.9 166.167L119.1 145.5Z" />
+        <path class="pc-dot" d="M200.4 10H226.6L212.2 34H186Z" />
+      </svg>
       <h2 class="loading-title">Weaving your playground</h2>
       <p class="loading-detail">Preparing Tartan…</p>
       <span class="loading-percent">0%</span>
@@ -446,13 +612,34 @@
         </div>
         <h2 id="explore-title">Start with a spark.</h2>
         <p class="dialog-description">
-          Three little experiments. A material, a mood, and somewhere to begin. What happens next is yours.
+          Five little experiments. A material, a mood, and somewhere to begin. What happens next is yours.
         </p>
         <div class="experiment-list">
+          <button class="experiment-card" type="button" data-experiment="cotton">
+            <span class="experiment-art art-madras" aria-hidden="true"
+              ><span class="art-caption">01 / UNPICK THE COLOR</span></span
+            ><span class="experiment-content"
+              ><span class="experiment-title">Color comes apart</span
+              ><span class="experiment-meta">Madras · Knife · Hanging · Slow</span
+              ><span class="experiment-description">Start a slit, pin one side and pull the colored yarns apart.</span
+              ><span class="experiment-start"
+                >Try this <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-5-5 5 5-5 5" /></svg></span
+            ></span></button
+          ><button class="experiment-card" type="button" data-experiment="shot">
+            <span class="experiment-art art-shot" aria-hidden="true"
+              ><span class="art-caption">02 / FOLLOW THE FOLD</span></span
+            ><span class="experiment-content"
+              ><span class="experiment-title">A change of silk</span
+              ><span class="experiment-meta">Shot silk · Hand · Breeze · Slow</span
+              ><span class="experiment-description">Teal warp and magenta weft trade the light as the cloth folds.</span
+              ><span class="experiment-start"
+                >Try this <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-5-5 5 5-5 5" /></svg></span
+            ></span>
+          </button>
           <button class="experiment-card" type="button" data-experiment="ribbons">
             <span class="experiment-art art-ribbons" aria-hidden="true"
               ><span class="ribbon ribbon-one"></span><span class="ribbon ribbon-two"></span
-              ><span class="ribbon ribbon-three"></span><span class="art-caption">01 / CUT &amp; DRIFT</span></span
+              ><span class="ribbon ribbon-three"></span><span class="art-caption">03 / CUT &amp; DRIFT</span></span
             >
             <span class="experiment-content"
               ><span class="experiment-title">Ribbons in motion</span
@@ -465,7 +652,7 @@
           <button class="experiment-card" type="button" data-experiment="storm">
             <span class="experiment-art art-storm" aria-hidden="true"
               ><span class="storm-weave"></span><span class="storm-cut"></span
-              ><span class="art-caption">02 / LET LOOSE</span></span
+              ><span class="art-caption">04 / LET LOOSE</span></span
             >
             <span class="experiment-content"
               ><span class="experiment-title">Storm study</span
@@ -477,7 +664,7 @@
           </button>
           <button class="experiment-card" type="button" data-experiment="gold">
             <span class="experiment-art art-gold" aria-hidden="true"
-              ><span class="gold-fold"></span><span class="art-caption">03 / CHASE THE LIGHT</span></span
+              ><span class="gold-fold"></span><span class="art-caption">05 / CHASE THE LIGHT</span></span
             >
             <span class="experiment-content"
               ><span class="experiment-title">Golden hour</span
