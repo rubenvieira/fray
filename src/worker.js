@@ -6,6 +6,8 @@ import { FabricFire, createFireView, burnAppearanceWGSL } from "./burn.js";
 import { freeYarnWGSL } from "./free-yarn.js";
 import { prepareMount, mountCamera, hangingRail, toToolSpace, fromToolSpace, normalizeMount } from "./mount.js";
 import { targetSpeed } from "./hand.js";
+import { additionalPresets, reinforcementStrength, materialColourWGSL } from "./material-library.js";
+import { captureSize, captureCrop } from "./capture-format.js";
 
 var e = class extends Error {};
 const t = {
@@ -1904,6 +1906,7 @@ function A(e, t) {
 }
 var oe =
     frayMaterialWGSL +
+    materialColourWGSL +
     `// Shared render definitions: frame/layer uniforms, hashing and noise, the woven yarn height model,
 // yarn appearance and the fiber BRDF. Used by the surface, explicit-yarn, fuzz and shadow passes so
 // intact cloth and freed yarns are the same material.
@@ -2306,6 +2309,9 @@ fn resolved(scale: f32, pix: f32) -> f32 { return clamp((scale / max(pix, 1e-9) 
 // loosened fibre: its pale (undyed / core) and dyed (surface) fibre.
 fn fabricWarpMean(m: u32) -> vec3<f32> {
   switch m {
+    case 9u: { return vec3<f32>(0.3, 0.32, 0.24); }
+    case 10u: { return vec3<f32>(0.02, 0.5, 0.42); }
+    case 11u: { return vec3<f32>(0.12, 0.42, 0.065); }
     case 1u: { return vec3<f32>(0.42, 0.26, 0.11); }
     case 2u: { return vec3<f32>(0.4, 0.09, 0.07); }
     case 3u: { return vec3<f32>(0.5, 0.03, 0.05); }
@@ -2319,6 +2325,9 @@ fn fabricWarpMean(m: u32) -> vec3<f32> {
 }
 fn fabricWeftMean(m: u32) -> vec3<f32> {
   switch m {
+    case 9u: { return vec3<f32>(0.3, 0.32, 0.24); }
+    case 10u: { return vec3<f32>(0.53, 0.025, 0.3); }
+    case 11u: { return vec3<f32>(0.12, 0.42, 0.065); }
     case 1u: { return vec3<f32>(0.39, 0.24, 0.1); }
     case 2u: { return vec3<f32>(0.4, 0.09, 0.07); }
     case 3u: { return vec3<f32>(0.36, 0.02, 0.03); }
@@ -2332,6 +2341,9 @@ fn fabricWeftMean(m: u32) -> vec3<f32> {
 }
 fn fabricRimPale(m: u32) -> vec3<f32> {
   switch m {
+    case 9u: { return vec3<f32>(0.75, 0.7, 0.57); }
+    case 10u: { return vec3<f32>(0.62, 0.5, 0.62); }
+    case 11u: { return vec3<f32>(0.6, 0.75, 0.35); }
     case 1u: { return vec3<f32>(0.62, 0.46, 0.24); }
     case 2u: { return vec3<f32>(0.7, 0.62, 0.56); }
     case 3u: { return vec3<f32>(0.8, 0.5, 0.52); }
@@ -2345,6 +2357,9 @@ fn fabricRimPale(m: u32) -> vec3<f32> {
 }
 fn fabricRimDyed(m: u32) -> vec3<f32> {
   switch m {
+    case 9u: { return vec3<f32>(0.3, 0.32, 0.24); }
+    case 10u: { return vec3<f32>(0.3, 0.16, 0.35); }
+    case 11u: { return vec3<f32>(0.12, 0.42, 0.065); }
     case 1u: { return vec3<f32>(0.3, 0.18, 0.07); }
     case 2u: { return vec3<f32>(0.5, 0.1, 0.1); }
     case 3u: { return vec3<f32>(0.45, 0.05, 0.08); }
@@ -2390,6 +2405,7 @@ fn frayedYarnReflectance(material: u32, fam: u32, yarn: i32, pale: f32) -> vec3<
     return mix(vec3<f32>(0.054, 0.078, 0.16), vec3<f32>(0.6, 0.62, 0.66), pale);
   }
   let exposure = frayProfile(material).amount.z * pale;
+  if (material >= 9u && material <= 11u) { return mix(additionalYarnColour(material, fam, yarn), fabricRimPale(material), exposure); }
   if (material == 2u) { return mix(tartanYarn(yarn), vec3<f32>(0.7, 0.65, 0.6), exposure); }
   return mix(fabricRimDyed(material), fabricRimPale(material), exposure);
 }
@@ -2425,6 +2441,20 @@ fn yarnLook(L: LayerR, layerIdx: u32, fam: u32, yarn: i32, float_: i32, along: f
   // pitch falls below a few pixels (the twill itself is shaded from the prefiltered weave tile)
   let pitchX = select(L.pitch.y, L.pitch.x, fam == 1u);
   let rYarn = resolved(pitchX, pix);
+  if (L.refine.w >= 9u && L.refine.w <= 11u) {
+    let material = L.refine.w;
+    let base = additionalYarnColour(material, fam, yarn);
+    let variation = 1.0 + (hash2f(seedY, 3u) - 0.5) * select(0.12, 0.28, material == 9u) * rYarn;
+    let silk = material == 10u;
+    let filament = mix(1.0, 0.86 + 0.28 * fiberRnd, fiberVis);
+    let sheen = select(0.0, 0.3 * pow(crown, 8.0), silk);
+    var alb = base * (0.78 + 0.22 * crown + sheen) * variation * filament;
+    alb = mix(alb, fabricRimPale(material), frayProfile(material).amount.z * (0.35 * wear + 0.4 * loose));
+    o.albedo = clamp(alb, vec3<f32>(0.0), vec3<f32>(1.0));
+    o.fuzz = select(select(0.08, 0.42, material == 9u), 0.04, silk) + 0.2 * loose;
+    o.ao = 1.0;
+    return o;
+  }
   if (L.refine.w == 2u) {
     // Worsted wool tartan: every yarn one colour of the sett, dulled and heathered by its hair; the hair
     // over the grooves between yarns greys the colour a little
@@ -2638,6 +2668,22 @@ fn fiberShade(N: vec3<f32>, T: vec3<f32>, V: vec3<f32>, Ldir: vec3<f32>, albedo:
   let sheenCol = mix(albedo * 2.5, vec3<f32>(0.30, 0.36, 0.50), 0.5);
   let sheen = sheenCol * fuzz * 0.22 * D * vis * lam;
   return diff + spec + sheen;
+}
+
+// Shot silk: a fitted longitudinal dyed-scattering lobe for each yarn family.
+// Keeping the two axes separate lets real lights and folds reveal different
+// dyes; the weak surface reflection remains neutral. No camera hue ramp.
+fn shotSilkShade(N: vec3<f32>, T: vec3<f32>, V: vec3<f32>, Ldir: vec3<f32>, albedo: vec3<f32>, fuzz: f32) -> vec3<f32> {
+  let NL = max(dot(N, Ldir), 0.0);
+  let TL = clamp(dot(T, Ldir), -0.999, 0.999);
+  let TV = clamp(dot(T, V), -0.999, 0.999);
+  let longitudinal = TL + TV;
+  let azimuth = sqrt(max(0.0, 0.5 + 0.5 * dot(normalize(Ldir - TL * T), normalize(V - TV * T))));
+  let dyed = exp(-longitudinal * longitudinal / (2.0 * 0.24 * 0.24));
+  let surface = exp(-longitudinal * longitudinal / (2.0 * 0.12 * 0.12));
+  let body = albedo * (0.16 + 0.08 * sqrt(1.0 - TL * TL));
+  return (body + albedo * (1.4 * dyed * azimuth) + vec3<f32>(0.025 * surface * azimuth)) * (NL / PI)
+    + 0.12 * fiberShade(N, T, V, Ldir, albedo, fuzz);
 }
 
 // Soft shadow from a broad light: PCF over a rotated Poisson disk of radiusTexels shadow-map texels
@@ -3364,6 +3410,7 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
   var fuzz = 0.0;
   var groove = 0.0;
   var cnt = 0.0;
+  var shotAcc = vec3<f32>(0.0);
   var mask = 0u;
   for (var k = 0u; k < 4u; k++) {
     if (lodTile >= 1.0) { break; }
@@ -3428,6 +3475,16 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
     let hn = mix(clamp((sgn * h + hTop) / (2.0 * hTop), 0.0, 1.0), 0.7, rim.rim);
     // interstices between floats (where the weft shows) are deep and shadowed by the neighbours
     let ao = weaveOcclusion(hn) * rim.ao;
+    if (LR.refine.w == 10u) {
+      // Two differently dyed yarn families must be lit before averaging.
+      // Averaging their orthogonal axes first erases shot silk's color shift.
+      let tangent = normalize(cos(tw) * axis + sin(tw) * cross(Ny, axis));
+      let dyed = albedo * mix(0.55, 1.0, ao);
+      let hair = look.fuzz + rimFuzz + 0.5 * dmg;
+      shotAcc += shotSilkShade(Ny, tangent, Vv, key.xyz, dyed, hair) * (key.w * sh) * F.keyColor.rgb
+        + shotSilkShade(Ny, tangent, Vv, F.overDir.xyz, dyed, hair) * over + amb * albedo * ao;
+      if (cam.w > 0.0) { shotAcc += shotSilkShade(Ny, tangent, Vv, cam.xyz, dyed, hair) * cam.w * F.torchColor.rgb; }
+    }
     albDirect += albedo * mix(0.55, 1.0, ao);
     albAmb += albedo * ao;
     nSum += Ny;
@@ -3447,8 +3504,11 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
     albAmb = albAmb * print;
     let Nl = normalize(nSum);
     let Tl = normalize(tSum - dot(tSum, Nl) * Nl + 1e-6 * Tu);
-    acc = fiberShade(Nl, Tl, Vv, key.xyz, albDirect * inv, fuzz * inv) * (key.w * sh) * F.keyColor.rgb + fiberShade(Nl, Tl, Vv, F.overDir.xyz, albDirect * inv, fuzz * inv) * over + amb * albAmb * inv;
-    if (cam.w > 0.0) { acc += fiberShade(Nl, Tl, Vv, cam.xyz, albDirect * inv, fuzz * inv) * cam.w * F.torchColor.rgb; }
+    if (LR.refine.w == 10u) { acc = shotAcc * print * inv; }
+    else {
+      acc = fiberShade(Nl, Tl, Vv, key.xyz, albDirect * inv, fuzz * inv) * (key.w * sh) * F.keyColor.rgb + fiberShade(Nl, Tl, Vv, F.overDir.xyz, albDirect * inv, fuzz * inv) * over + amb * albAmb * inv;
+      if (cam.w > 0.0) { acc += fiberShade(Nl, Tl, Vv, cam.xyz, albDirect * inv, fuzz * inv) * cam.w * F.torchColor.rgb; }
+    }
     // loose fibres bridging the grooves: a faint haze lifts the deepest points
     acc = mix(acc, (hazeE * 0.06 + amb * 0.6) * vec3<f32>(0.32, 0.36, 0.48), 0.12 * groove * inv * fuzz * inv);
     acc *= cnt;
@@ -3481,6 +3541,22 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
     let albD = albedo * mix(0.55, 1.0, ao);
     var ct = fiberShade(Ny, Tf, Vv, key.xyz, albD, fz) * (key.w * sh) * F.keyColor.rgb + fiberShade(Ny, Tf, Vv, F.overDir.xyz, albD, fz) * over + amb * albedo * ao;
     if (cam.w > 0.0) { ct += fiberShade(Ny, Tf, Vv, cam.xyz, albD, fz) * cam.w * F.torchColor.rgb; }
+    if (LR.refine.w == 10u) {
+      let warpT = normalize(cos(LR.warp.w) * Tv + sin(LR.warp.w) * cross(Ny, Tv));
+      let weftT = normalize(cos(LR.weft.w) * Tu + sin(LR.weft.w) * cross(Ny, Tu));
+      let warpAlb = mix(lw.albedo, rimAlb, rimPale) * print;
+      let weftAlb = mix(lf.albedo, rimAlb, rimPale) * print;
+      let occlusion = mix(0.55, 1.0, ao);
+      var warpLight = shotSilkShade(Ny, warpT, Vv, key.xyz, warpAlb * occlusion, lw.fuzz) * (key.w * sh) * F.keyColor.rgb
+        + shotSilkShade(Ny, warpT, Vv, F.overDir.xyz, warpAlb * occlusion, lw.fuzz) * over + amb * warpAlb * ao;
+      var weftLight = shotSilkShade(Ny, weftT, Vv, key.xyz, weftAlb * occlusion, lf.fuzz) * (key.w * sh) * F.keyColor.rgb
+        + shotSilkShade(Ny, weftT, Vv, F.overDir.xyz, weftAlb * occlusion, lf.fuzz) * over + amb * weftAlb * ao;
+      if (cam.w > 0.0) {
+        warpLight += shotSilkShade(Ny, warpT, Vv, cam.xyz, warpAlb * occlusion, lw.fuzz) * cam.w * F.torchColor.rgb;
+        weftLight += shotSilkShade(Ny, weftT, Vv, cam.xyz, weftAlb * occlusion, lf.fuzz) * cam.w * F.torchColor.rgb;
+      }
+      ct = mix(weftLight, warpLight, wf);
+    }
     ct = mix(ct, (hazeE * 0.06 + amb * 0.6) * vec3<f32>(0.32, 0.36, 0.48), 0.12 * (1.0 - ao) * fz);
     color = select(mix(color, ct, lodTile), ct, cnt == 0.0);
     if (lodTile >= 1.0) {
@@ -12786,7 +12862,8 @@ function Xt(e, t, n, r) {
           v = Math.exp((0.2 + 0.12 * d) * _ + (0.06 + 0.22 * d) * g),
           y = Math.max(0.02, 1 - o * f);
         ((e.fieldArea[2 * u + r] = lt(y)),
-          (e.fieldStrength[2 * u + r] = i.yarns[r].strength * Math.max(0.005, y * v * h)));
+          (e.fieldStrength[2 * u + r] =
+            i.yarns[r].strength * Math.max(0.005, y * v * h) * reinforcementStrength(t, p)));
       }
       d > g + 0.04 * h(m, l, c) + 0.012 * (G(a + 990, s) - 0.5) &&
         G(a + 991, s, n) < t.wear.defectDensity &&
@@ -13036,6 +13113,7 @@ const FABRICS = {
     perturbation: 0.003,
   },
 };
+Object.assign(FABRICS, additionalPresets(FABRICS));
 function Zt(e = `denim`) {
   return [FABRICS[e] ?? FABRICS.denim];
 }
@@ -15183,8 +15261,16 @@ var ClipRecorder = class {
   t0 = 0;
   last = -1 / 0;
   frames = 0;
-  constructor(e, t) {
-    ((this.width = e & -2), (this.height = t & -2));
+  exportCanvas = null;
+  exportContext = null;
+  constructor(e, t, format = `screen`) {
+    const size = captureSize(format, e, t);
+    this.width = size.width;
+    this.height = size.height;
+    if (format !== `screen`) {
+      this.exportCanvas = new OffscreenCanvas(this.width, this.height);
+      this.exportContext = this.exportCanvas.getContext(`2d`, { alpha: false });
+    }
   }
   async start() {
     if (typeof VideoEncoder > `u` || typeof VideoFrame > `u`)
@@ -15249,7 +15335,12 @@ var ClipRecorder = class {
     );
   }
   fail(e) {
-    ((this.encoder = null), X({ type: `record`, state: `failed`, message: e }));
+    const encoder = this.encoder;
+    this.encoder = null;
+    try {
+      encoder?.close();
+    } catch {}
+    X({ type: `record`, state: `failed`, message: e });
   }
   frame(e, t) {
     let n = this.encoder;
@@ -15262,7 +15353,13 @@ var ClipRecorder = class {
     if (r > 1e3 * RECORD_MAX_S) return;
     let i;
     try {
-      i = new VideoFrame(e, {
+      let source = e;
+      if (this.exportCanvas) {
+        const crop = captureCrop(e.width, e.height, this.width, this.height);
+        this.exportContext.drawImage(e, crop.x, crop.y, crop.width, crop.height, 0, 0, this.width, this.height);
+        source = this.exportCanvas;
+      }
+      i = new VideoFrame(source, {
         timestamp: Math.round(1e3 * r),
         visibleRect: { x: 0, y: 0, width: this.width, height: this.height },
       });
@@ -15367,6 +15464,11 @@ const Q = Dt.h,
     airJets = /* @__PURE__ */ new Map();
     firePoints = new Map();
     fire = null;
+    // A material node, not a stale screen coordinate. The existing rest probe
+    // refreshes its current position for the Detail composition preset.
+    contact = null;
+    lightMode = `soft`;
+    lightingBase = null;
     pinSeq = 0;
     simTime = 0;
     // simulated seconds per real second (slow motion below 1)
@@ -15466,7 +15568,7 @@ const Q = Dt.h,
         this.solver.setFloor(this.renderer.floorZ),
         (this.speedProbe = this.device.createBuffer({
           label: `speedProbe`,
-          size: 240,
+          size: 256,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })),
         Z(0.7));
@@ -15552,6 +15654,7 @@ const Q = Dt.h,
         await this.device.queue.onSubmittedWorkDone());
     }
     reset() {
+      this.contact = null;
       if (this.ready && this.snapshot) {
         this.setPaused(!1);
         if (this.stage) {
@@ -15563,6 +15666,7 @@ const Q = Dt.h,
     }
     restoreCloth() {
       if (!this.snapshot) return;
+      this.contact = null;
       (this.releaseAll(), this.releaseEpoch++, this.releasing.clear(), this.interaction.releaseAll());
       this.audioPort?.postMessage({ reset: !0 });
       this.damageCounts = [0, 0];
@@ -15813,6 +15917,11 @@ const Q = Dt.h,
         this.pickRadius(event),
       );
     }
+    rememberContact(hit) {
+      if (hit && Number.isInteger(hit.node) && hit.position?.length === 3 && hit.position.every(Number.isFinite)) {
+        this.contact = { node: hit.node, position: [...hit.position], epoch: this.releaseEpoch };
+      }
+    }
     clearFire() {
       this.firePoints?.clear();
       this.fire?.clearSources();
@@ -15846,6 +15955,7 @@ const Q = Dt.h,
           // A hole has no fuel. The pick is the actual deformed surface, and the
           // selected material node keeps the igniter attached while cloth moves.
           if (hit) {
+            this.rememberContact(hit);
             this.wake();
             this.dirty = true;
           }
@@ -15882,6 +15992,7 @@ const Q = Dt.h,
             this.stage
           )
             return;
+          this.rememberContact(hit);
           this.fists.push({ p: toToolSpace(hit.position, this.mount), t0: this.simTime });
           this.wake();
           this.dirty = true;
@@ -15957,6 +16068,7 @@ const Q = Dt.h,
             return;
           }
           if (hit) {
+            this.rememberContact(hit);
             const point = toToolSpace(hit.position, this.mount);
             point[2] += FIST.clawDepth;
             if (!claw.tip) claw.tip = point;
@@ -16227,6 +16339,7 @@ const Q = Dt.h,
             return;
           }
           if (n) {
+            this.rememberContact(n);
             (this.body.cut(t.last >= 0 ? t.last : n.node, n.node), (t.last = n.node), this.wake(), (this.dirty = !0));
           } else t.last = -1;
           this.bladeSample(e, t);
@@ -16323,6 +16436,7 @@ const Q = Dt.h,
         this.down.delete(e);
         return;
       }
+      this.rememberContact(s);
       let d = E(w(this.camera.target, r.eye)),
         f = { slot: l, node: s.node, hand: new We(u, te(d, -1)), track: c, plane: u, normal: d, downPoint: u };
       // A quick pull may finish during the GPU pick. Replay at most 50 ms of its
@@ -16385,10 +16499,30 @@ const Q = Dt.h,
       this.strokes.clear();
       this.body?.clearStrokes();
     }
+    setLighting(mode) {
+      if (!this.ready || ![`soft`, `raking`].includes(mode)) return;
+      this.lightingBase ??= {
+        keyOffset: [...this.renderer.keyOffset],
+        keyIntensity: this.renderer.keyIntensity,
+        ambient: [...this.renderer.ambient],
+        overIntensity: this.renderer.overIntensity,
+      };
+      const base = this.lightingBase;
+      this.lightMode = mode;
+      this.renderer.keyOffset =
+        mode === `soft` ? [...base.keyOffset] : this.mount === `hanging` ? [-0.42, -0.16, 0.16] : [-0.42, -0.22, 0.12];
+      this.renderer.keyIntensity = base.keyIntensity * (mode === `soft` ? 1 : 0.8);
+      this.renderer.ambient = base.ambient.map((v) => v * (mode === `soft` ? 1 : 0.55));
+      this.renderer.overIntensity = base.overIntensity * (mode === `soft` ? 1 : 0.55);
+      this.dirty = true;
+    }
     setCamera(preset) {
       if (!this.ready || this.stage || ![`front`, `angle`, `detail`, `reset`].includes(preset)) return;
       this.cancelPicks();
       this.camera = mountCamera(this.mount, preset, this.cssWidth / this.cssHeight, k, this.cssHeight);
+      if (preset === `detail` && this.contact?.epoch === this.releaseEpoch) {
+        this.camera.target = [...this.contact.position];
+      }
       this.dirty = !0;
     }
     zoom(e) {
@@ -16517,12 +16651,16 @@ const Q = Dt.h,
       const measureTails = !!this.renderer.tailCount;
       const measureFire = !!this.fire;
       const fireGeneration = this.fire?.generation;
+      const contact = this.contact;
+      const measureContact =
+        contact && Number.isInteger(contact.node) && contact.node >= 0 && contact.node < this.solver.N;
       ((this.probeSteps = 0), (this.probeBusy = !0));
       let r = this.device.createCommandEncoder({ label: `restProbe` });
       (r.copyBufferToBuffer(this.solver.counters, 0, t, 0, 16),
         measureLoad && r.copyBufferToBuffer(this.interaction.gripGoal, 0, t, 16, 192),
         measureTails && r.copyBufferToBuffer(this.renderer.tailCount, 0, t, 208, 16),
         measureFire && r.copyBufferToBuffer(this.fire.count, 0, t, 224, 16),
+        measureContact && r.copyBufferToBuffer(this.solver.x, 16 * contact.node, t, 240, 16),
         r.clearBuffer(this.solver.counters, 8, 4),
         this.device.queue.submit([r.finish()]),
         t.mapAsync(GPUMapMode.READ).then(
@@ -16537,6 +16675,11 @@ const Q = Dt.h,
               counts = [i[0], i[1]],
               a = counts[0] + counts[1];
             let force = 0;
+            if (measureContact && this.contact === contact && contact.epoch === this.releaseEpoch) {
+              const point = new Float32Array(e, 240, 4);
+              if (point[3] < 1.5 && point.every(Number.isFinite)) contact.position = Array.from(point.slice(0, 3));
+              else this.contact = null;
+            }
             if (
               measureFire &&
               !new Uint32Array(e, 224, 4)[0] &&
@@ -16736,10 +16879,10 @@ const Q = Dt.h,
           },
         );
     }
-    async record(e) {
+    async record(e, format = `screen`) {
       if (e === `start`) {
         if (this.recorder || !this.ready || !this.canvas) return;
-        let e = new ClipRecorder(this.canvas.width, this.canvas.height);
+        let e = new ClipRecorder(this.canvas.width, this.canvas.height, format);
         this.recorder = e;
         (await e.start()) ? (this.dirty = !0) : this.recorder === e && (this.recorder = null);
       } else {
@@ -16829,6 +16972,7 @@ const Q = Dt.h,
           mount: this.mount,
           rested: this.rested,
           wind: this.windLevel,
+          lighting: this.lightMode,
           airJets: this.airJets.size,
           fireSources: this.firePoints.size,
           burning: this.fire?.enabled ?? false,
@@ -16889,6 +17033,9 @@ In.onmessage = (t) => {
     case `camera`:
       $.setCamera(n.preset);
       break;
+    case `lighting`:
+      $.setLighting(n.mode);
+      break;
     case `pause`:
       $.setPaused(n.paused);
       break;
@@ -16914,7 +17061,7 @@ In.onmessage = (t) => {
       $.capture(n.id);
       break;
     case `record`:
-      $.record(n.action);
+      $.record(n.action, n.format);
       break;
     case `experience`:
       $.experience(n.name);

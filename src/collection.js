@@ -245,7 +245,7 @@ export function createCollection({ openDialog, closeDialog, toast, onSelect }) {
     }
   }
 
-  async function keep({ blob, fabric, score, seconds, kind = `image` }) {
+  async function keep({ blob, fabric, fabricKey, mount, score, seconds, kind = `image` }) {
     if (disposed) return false;
     if (!(blob instanceof Blob) || !blob.size) {
       toast(`There is no snapshot to keep yet. Take a snapshot and try again.`);
@@ -255,6 +255,8 @@ export function createCollection({ openDialog, closeDialog, toast, onSelect }) {
       id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       blob,
       fabric: typeof fabric === `string` ? fabric : `Fabric`,
+      ...(typeof fabricKey === `string` ? { fabricKey } : {}),
+      ...([`frame`, `hanging`].includes(mount) ? { mount } : {}),
       score: number(score),
       seconds: Number.isFinite(seconds) ? Math.max(0, seconds) : 0,
       kind: kind === `frame` ? `frame` : `image`,

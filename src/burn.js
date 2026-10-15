@@ -1,4 +1,5 @@
 import { airflowWGSL } from "./airflow.js";
+import { ADDITIONAL_MATERIALS } from "./material-library.js";
 
 // Qualitative textile fits for this interactive model, not laboratory fire
 // properties. K, fuel fraction/s, char tendency, retained flame heat K/fraction.
@@ -12,6 +13,7 @@ export const BURN_PROFILES = [
   [545, 0.95, 0.6, 1850], // open cotton
   [690, 0.28, 0.9, 1550], // metallic-faced weave
   [730, 0.32, 0.5, 1600], // nylon
+  ...ADDITIONAL_MATERIALS.map((m) => m.burn),
 ];
 const vec = (p) => `vec4<f32>(${p.map((v) => (Number.isInteger(v) ? `${v}.0` : v)).join(", ")})`;
 export const burnProfileWGSL = `
@@ -117,7 +119,7 @@ fn burnStep(@builtin(global_invocation_id) gid: vec3<u32>) {
   // Strong frontal flow cools the fabric; ordinary airflow bends the plume.
   let reaction = profile.y * activation * max(0.0, 1.0 - prev.y) / (1.0 + 0.025 * speed * speed);
   // Thermoplastic nylon loses its load-bearing section before sustained flame.
-  let melting = select(0.0, 0.38 * smoothstep(500.0, 630.0, temperature) * max(0.0, 1.0 - prev.y), BU.materials[l] == 8u);
+  let melting = select(0.0, 0.38 * smoothstep(500.0, 630.0, temperature) * max(0.0, 1.0 - prev.y), BU.materials[l] == 8u || BU.materials[l] == 11u);
   let consumed = min(1.0, prev.y + dt * max(reaction, melting));
   temperature += dt * reaction * profile.w;
   let scorch = 0.55 * smoothstep(410.0, ignition, temperature);

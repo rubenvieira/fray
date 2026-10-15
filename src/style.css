@@ -2700,3 +2700,15 @@ body.pc-hidden .workbench, body.pc-hidden .experiences, body.pc-hidden .tools { 
   .dock.pc-dock .frame-toggle span, .dock.pc-dock .dock-actions span { display: none; }
   .experiences.pc-menu, .tools.pc-menu { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* Export guides are composition aids; saved media contains only the canvas. */
+.capture-guide { position: fixed; z-index: 1; pointer-events: none; border: 1px dashed #f1e9dd80; box-sizing: border-box; }
+.capture-guide span { position: absolute; top: 82px; left: 10px; padding: 5px 9px; border-radius: 99px; background: var(--pc-panel); color: var(--pc-muted); font: 500 11px/1.3 var(--pc-font); }
+body.pc-hidden .capture-guide { display: none; }
+.fabric-swatch[data-fabric="denim"] { background: repeating-linear-gradient(130deg,#536a95 0 2px,#172f55 2px 5px); }
+.fabric-swatch[data-fabric="madras"] { background: repeating-linear-gradient(0deg,#02a4ae88 0 6px,#e75a2488 6px 12px,transparent 12px 16px),repeating-linear-gradient(90deg,#11a4af 0 6px,#a8218b 6px 12px,#deb844 12px 16px); }
+.fabric-swatch[data-fabric="shot"] { background: linear-gradient(125deg,#07b5a0 5%,#26667f 45%,#c21d83 90%); }
+.fabric-swatch[data-fabric="ripstop"] { background: repeating-linear-gradient(0deg,#c2d75a99 0 1px,transparent 1px 8px),repeating-linear-gradient(90deg,#c2d75a99 0 1px,#568b1b 1px 8px); }
+
+.art-madras { background: repeating-linear-gradient(0deg,#08a9af88 0 28px,#df582988 28px 54px,transparent 54px 65px),repeating-linear-gradient(90deg,#08a9af 0 32px,#a6248b 32px 63px,#ddb747 63px 76px); }
+.art-shot { background: linear-gradient(130deg,#012d32,#049d8b 24%,#266478 42%,#ad1674 65%,#411b56); }

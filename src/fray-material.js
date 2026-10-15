@@ -1,3 +1,4 @@
+import { ADDITIONAL_MATERIALS } from "./material-library.js";
 // Appearance/reconstruction fits, not changes to the load-bearing yarn laws.
 // Staple wool/jute keep uneven brushes; silk and nylon keep finer filaments.
 // Lengths are metres; EI and linear mass scale the existing cotton-fibre model.
@@ -31,6 +32,7 @@ export const FRAY_MATERIALS = [
     amount: [0.15, 0.25, 0.025, 4],
     fibre: [14e-6, 1.1, 0.025, 1.1],
   },
+  ...ADDITIONAL_MATERIALS.map((m) => m.fray),
 ];
 
 const vector = (values) => `vec4<f32>(${values.map((n) => (Number.isInteger(n) ? `${n}.0` : String(n))).join(", ")})`;
