@@ -2603,6 +2603,11 @@ html, body { font-family: var(--pc-font); }
 .dock.pc-dock .toolitem kbd, .dock.pc-dock .toolitem .tool-key { display: none; }
 .dock.pc-dock .toolitem:hover { background: var(--pc-hover); }
 .dock.pc-dock .toolitem[aria-pressed="true"] { background: var(--pc-accent); color: var(--pc-on-accent); font-weight: 600; }
+@media (min-width: 701px) and (max-width: 1350px) {
+  .dock.pc-dock .toolitem { padding-left: 8px; padding-right: 8px; gap: 5px; }
+  .dock.pc-dock .toolitem svg { width: 17px; height: 17px; }
+  .dock.pc-dock .toolitem span { font-size: 12px; }
+}
 .dock.pc-dock .fabric-picker { display: contents; position: static; }
 .dock.pc-dock .fabric-picker .menu { position: static; display: flex; flex: none; width: auto; max-width: 180px; align-items: center; gap: 8px; height: auto; min-width: 0; padding: 7px 11px 7px 8px; border: 0 !important; border-radius: 10px; background: transparent !important; box-shadow: none; color: var(--pc-ink); }
 .dock.pc-dock .fabric-picker .menu:hover, .dock.pc-dock .fabric-picker .menu[aria-expanded="true"] { background: var(--pc-hover) !important; }
@@ -2635,6 +2640,8 @@ html, body { font-family: var(--pc-font); }
 .guide-description { margin: 0; color: var(--pc-muted); font: 400 12.5px/1.35 var(--pc-font); }
 .interaction-guide.air-active { box-shadow: 0 0 0 1px var(--pc-accent); }
 .interaction-guide.air-active .guide-title { color: var(--pc-accent); }
+.interaction-guide.fire-active { box-shadow: 0 0 0 1px #ed9455; }
+.interaction-guide.fire-active .guide-title { color: #f4a266; }
 .camera-hint { display: none; }
 .effect-summary, .experiment-active { background: var(--pc-panel) !important; border-color: var(--pc-line) !important; color: var(--pc-ink); font-family: var(--pc-font); border-radius: 14px; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 

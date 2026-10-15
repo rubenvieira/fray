@@ -20,7 +20,8 @@ struct TailMemory {
 
 fn tailIdentity(ri: RunInfo) -> vec2<u32> {
   let cut = bitcast<u32>(i32(select(ri.pos - 1.0, ri.pos + ri.n, ri.heldA)));
-  return vec2<u32>((ri.yarn << 5u) | (ri.layer << 2u) | (ri.fam << 1u) | u32(ri.heldA), cut);
+  let freeMode = u32(!ri.heldA && !ri.heldB) << 4u;
+  return vec2<u32>((ri.yarn << 5u) | freeMode | (ri.layer << 2u) | (ri.fam << 1u) | u32(ri.heldA), cut);
 }
 
 fn tailSlot(id: vec2<u32>, frame: u32) -> i32 {

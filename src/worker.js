@@ -1,6 +1,9 @@
 import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "./tail-memory.js";
 import { frayMaterialWGSL } from "./fray-material.js";
 import { airflowWGSL } from "./airflow.js";
+import { releaseWGSL, pullMemoryBytes } from "./yarn-release.js";
+import { FabricFire, createFireView, burnAppearanceWGSL } from "./burn.js";
+import { freeYarnWGSL } from "./free-yarn.js";
 import { prepareMount, mountCamera, hangingRail, toToolSpace, fromToolSpace, normalizeMount } from "./mount.js";
 import { targetSpeed } from "./hand.js";
 
@@ -2973,6 +2976,8 @@ fn refine(@builtin(global_invocation_id) gid: vec3<u32>) {
 @group(0) @binding(17) var printTex: texture_2d<f32>;
 @group(0) @binding(18) var printSampler: sampler;
 
+${burnAppearanceWGSL}
+
 
 struct VOut {
   @builtin(position) pos: vec4<f32>,
@@ -3490,7 +3495,7 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
   }
   if (mask == 0u) { discard; }
   var o: FsOut;
-  o.color = vec4<f32>(color, 1.0);
+  o.color = vec4<f32>(burnColour(color, burnAt(in.layer, in.uv)), 1.0);
   o.mask = mask;
   return o;
 }
@@ -4226,9 +4231,9 @@ fn yarnState(c: u32, f: u32) -> u32 {
 }
 
 // Append run [pos, pos + n) of a yarn (family f, cross index yarn) with its ends (0 held in the cloth,
-// 1 free, 2 the field's border). A piece cut free at both ends has nothing holding it: it has fallen.
+// 1 free, 2 the field's border). A piece cut free at both ends becomes a falling yarn.
 fn emitRun(l: u32, f: u32, yarn: u32, pos: u32, n: u32, endA: u32, endB: u32) {
-  if (n == 0u || (endA == 1u && endB == 1u)) { return; }
+  if (n == 0u) { return; }
   let r = atomicAdd(&threadCount[0], 1u);
   if (r >= MAX_RUNS) { return; }
   runs[r] = vec4<u32>(l | (f << 4u) | (endA << 5u) | (endB << 7u), yarn | (pos << 16u), n, 0u);
@@ -4479,6 +4484,7 @@ fn runCenter(ri: RunInfo, g: RunGeo, cA: vec3<f32>, cB: vec3<f32>, p: f32) -> Ce
     o.side = cross(vec3<f32>(0.0, 0.0, 1.0), select(g.tA, g.tB, !ri.heldA));
     o.nrm = vec3<f32>(0.0, 0.0, 1.0);
   }
+  if (!ri.heldA && !ri.heldB && g.tail < 0) { o.valid = false; return o; }
   if (ri.heldA && ri.heldB) {
     let tr = clamp((p - ri.drawA) / span, 0.0, 1.0);
     o.p = mix(g.pA, g.pB, tr) + g.sag * (4.0 * tr * (1.0 - tr));
@@ -4491,7 +4497,7 @@ fn runCenter(ri: RunInfo, g: RunGeo, cA: vec3<f32>, cB: vec3<f32>, p: f32) -> Ce
   let fromA = ri.heldA;
   let held = select(ri.drawB, ri.drawA, fromA);
   let shift = endOffset(ri, g, cA, cB, p);
-  if (select(p >= g.reach, p <= g.reach, fromA) && c.valid) {
+  if ((ri.heldA || ri.heldB) && select(p >= g.reach, p <= g.reach, fromA) && c.valid) {
     o.p = c.p + shift;
     o.d = c.d;
     return o;
@@ -4753,11 +4759,13 @@ fn threadPrep(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (r >= min(threadCount[0], MAX_RUNS)) { return; }
   let ri = runInfo(runs[r]);
   var g = runGeoZero();
-  g.chain = chainCarries(ri);
+  g.chain = (ri.heldA || ri.heldB) && chainCarries(ri);
   let cA = centerAt(ri, ri.drawA).p;
   let cB = centerAt(ri, ri.drawB).p;
   g.pA = cA;
   g.pB = cB;
+  g.tA = normalize(centerAt(ri, ri.drawA).d + vec3<f32>(1e-9, 0.0, 0.0));
+  g.tB = normalize(centerAt(ri, ri.drawB).d + vec3<f32>(1e-9, 0.0, 0.0));
   // ends held in the cloth (not at the field's border, where the chain is the cloth)
   if (((runs[r].x >> 5u) & 3u) == 0u) {
     let e = heldEnd(ri, ri.drawA);
@@ -4773,8 +4781,8 @@ fn threadPrep(@builtin(global_invocation_id) gid: vec3<u32>) {
   // free tail beyond
   var reach = select(ri.drawA, ri.drawB, ri.heldA);
   var tailLen = 0.0;
-  if (!g.chain && ri.heldA != ri.heldB) {
-    reach = chainReach(ri);
+  if (!g.chain && !(ri.heldA && ri.heldB)) {
+    reach = select(chainReach(ri), ri.drawB, !ri.heldA && !ri.heldB);
     let LR = R.layers[ri.layer];
     let pitchAl = select(LR.pitch.y, LR.pitch.x, ri.fam == 0u);
     tailLen = abs(select(ri.drawA, ri.drawB, ri.heldA) - reach) * pitchAl;
@@ -4826,7 +4834,37 @@ fn tailRoot(ri: RunInfo, g: RunGeo, cA: vec3<f32>, cB: vec3<f32>) -> array<vec4<
   let Bcr = select(bundleOf(LR, 1u), bundleOf(LR, 0u), f == 0u);
   let len = select(L.z, L.y, f == 0u);
   let a = u32(clamp(round((g.reach - 0.5 * (Bal - 1.0)) / Bal), 0.0, f32(len) - 1.0));
-  let root = chainNode(L, f, a, ri.yarn / Bcr);
+  var root = chainNode(L, f, a, ri.yarn / Bcr);
+  if (!ri.heldA && !ri.heldB) {
+    // A fine free yarn can outlive the coarse node that used to carry it.
+    // Seed it from nearby live material, never from retired-node velocities
+    // or the held-tail's quadratic extrapolation beyond a broken bundle.
+    var best = 1e9;
+    var found = false;
+    let b = i32(ri.yarn / Bcr);
+    let acrossCount = i32(select(L.y, L.z, f == 0u));
+    for (var db = -2; db <= 2; db++) {
+      for (var da = -2; da <= 2; da++) {
+        let aa = i32(a) + da;
+        let bb = b + db;
+        if (aa < 0 || bb < 0 || aa >= i32(len) || bb >= acrossCount) { continue; }
+        let n = chainNode(L, f, u32(aa), u32(bb));
+        let score = f32(da * da + db * db);
+        if (liveTh(n) && score < best) { root = n; best = score; found = true; }
+      }
+    }
+    if (!found) { return array<vec4<f32>, 2>(vec4<f32>(0.0, 0.0, 0.0, -1.0), vec4<f32>(dir0, 0.0)); }
+    let local = root - L.x;
+    let rootAlong = select(local / L.y, local % L.y, f == 0u);
+    let rootAcross = select(local % L.y, local / L.y, f == 0u);
+    let pitchAlong = select(LR.pitch.y, LR.pitch.x, f == 0u);
+    let pitchAcross = select(LR.pitch.x, LR.pitch.y, f == 0u);
+    let alongOffset = (ri.drawB - (f32(rootAlong) * Bal + 0.5 * (Bal - 1.0))) * pitchAlong;
+    let acrossOffset = (f32(ri.yarn) - (f32(rootAcross * Bcr) + 0.5 * f32(Bcr - 1u))) * pitchAcross;
+    q = x[root].xyz + tframe[2u * root + f].xyz * alongOffset + tframe[2u * root + 1u - f].xyz * acrossOffset;
+    dir0 = -normalize(tframe[2u * root + f].xyz + vec3<f32>(1e-9, 0.0, 0.0));
+    return array<vec4<f32>, 2>(vec4<f32>(q, f32(root)), vec4<f32>(dir0, 0.0));
+  }
   if (g.reach != held) {
     let e = centerAt(ri, g.reach);
     q = e.p + shift;
@@ -4992,11 +5030,14 @@ fn threadTail(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (r >= min(threadCount[0], MAX_RUNS)) { return; }
   let h = runGeo[RUN_GEO * r];
   let ri = runInfo(runs[r]);
-  if (h.x > 0.5 || ri.heldA == ri.heldB || h.w <= 0.1e-3) { return; }
+  if (h.x > 0.5 || (ri.heldA && ri.heldB) || h.w <= 0.1e-3) { return; }
+  let root = runGeo[RUN_GEO * r + 7u];
+  if (root.w < 0.0) { return; }
   let k = atomicAdd(&tailCount[0], 1u);
   if (k >= MAX_TAILS) { return; }
-  let root = runGeo[RUN_GEO * r + 7u];
-  tailSolve(ri, root.xyz, runGeo[RUN_GEO * r + 8u].xyz, u32(root.w), k, h.w);
+  if (!ri.heldA && !ri.heldB) {
+    freeYarnSolve(ri, root.xyz, runGeo[RUN_GEO * r + 8u].xyz, u32(root.w), k, h.w);
+  } else { tailSolve(ri, root.xyz, runGeo[RUN_GEO * r + 8u].xyz, u32(root.w), k, h.w); }
   runGeo[RUN_GEO * r] = vec4<f32>(h.xy, f32(k), h.w);
 }
 
@@ -5198,6 +5239,7 @@ fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len:
     tailMemory[slot].shape = vec4<f32>(dir0, len);
   }
 }
+${freeYarnWGSL}
 `,
   he = `// Loose threads (threads.wgsl runs, thread_geom.wgsl geometry): each chunk of a run is a ribbon
 // facing the camera around the yarn's centre line, shaded as a round fibrous cylinder with the same
@@ -5220,6 +5262,8 @@ fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len:
 // free tails of threads held at one end (thread_prep.wgsl tailSolve)
 @group(0) @binding(11) var<storage, read> tails: array<vec4<f32>>;
 @group(0) @binding(12) var overMap: texture_depth_2d;
+
+${burnAppearanceWGSL}
 
 const CHUNK_PTS: u32 = THREAD_VERTS / 2u;
 const FIBER_PTS: u32 = FIBER_VERTS / 2u;
@@ -5334,7 +5378,8 @@ fn fsThread(in: VOut) -> @location(0) vec4<f32> {
   var c = fiberShade(N, Tf, V, key.xyz, look.albedo, look.fuzz + 0.25) * (key.w * sh) * F.keyColor.rgb + overShade(N, Tf, V, look.albedo, look.fuzz + 0.25, in.world, N) + amb * look.albedo * ao;
   let cam = torchLight(in.world);
   if (cam.w > 0.0) { c += fiberShade(N, Tf, V, cam.xyz, look.albedo, look.fuzz + 0.25) * cam.w * F.torchColor.rgb; }
-  return vec4<f32>(c, in.alpha);
+  let uv = select(vec2<f32>(f32(in.id.x), in.c), vec2<f32>(in.c, f32(in.id.x)), in.id.y == 0u);
+  return vec4<f32>(burnColour(c, burnAt(in.id.z, uv)), in.alpha);
 }
 
 // ---------------------------------------------------------------- fibres
@@ -5346,6 +5391,7 @@ struct FOut {
   @location(2) alpha: f32,
   // yarn (fine index), family, layer, seed
   @location(3) @interpolate(flat) id: vec4<u32>,
+  @location(4) thermal: vec4<f32>,
 };
 
 fn hiddenF() -> FOut {
@@ -5402,6 +5448,7 @@ fn vsThreadFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32
   let wave = vec3<f32>(hashf(seed + 7u) - 0.5, hashf(seed + 8u) - 0.5, hashf(seed + 9u) - 0.5) * (0.3 * len);
   var o = fibre(tp.p + radial * tp.radius, dir, len, bend, wave, (1.0 + 2.0 * hashf(seed + 10u)) * profile.shape.w, profile.fibre.x, vi, u1, vec4<u32>(ch.ri.yarn, ch.ri.fam, ch.ri.layer, seed));
   o.alpha *= min(1.0, profile.amount.y / 5.0);
+  o.thermal = burnAt(ch.ri.layer, select(vec2<f32>(f32(ch.ri.yarn), p), vec2<f32>(p, f32(ch.ri.yarn)), ch.ri.fam == 0u));
   return o;
 }
 
@@ -5417,7 +5464,7 @@ fn fsThreadFuzz(in: FOut) -> @location(0) vec4<f32> {
   var c = fiberShade(N, T, V, key.xyz, albedo, 0.2) * (key.w * sh) * F.keyColor.rgb + overShade(N, T, V, albedo, 0.2, in.world, N) + F.ambient.rgb * albedo;
   let cam = torchLight(in.world);
   if (cam.w > 0.0) { c += fiberShade(N, T, V, cam.xyz, albedo, 0.2) * cam.w * F.torchColor.rgb; }
-  return vec4<f32>(c, in.alpha);
+  return vec4<f32>(burnColour(c, in.thermal), in.alpha);
 }
 `,
   ge = `// The free edges' fibre (render-only, attached to its material). Each open side of an edge crossing
@@ -5444,6 +5491,8 @@ fn fsThreadFuzz(in: FOut) -> @location(0) vec4<f32> {
 @group(0) @binding(9) var shadowMap: texture_depth_2d;
 @group(0) @binding(10) var shadowSampler: sampler_comparison;
 @group(0) @binding(11) var overMap: texture_depth_2d;
+
+${burnAppearanceWGSL}
 
 const FIBER_PTS: u32 = FIBER_VERTS / 2u;
 // strands per open side (FIBERS_PER_EDGE are dealt round a crossing's open sides)
@@ -5497,6 +5546,7 @@ struct VOut {
   @location(6) lat: vec2<f32>,
   // fibres in the sheet, root half width (m), length (m), fraction dyed
   @location(7) @interpolate(flat) sheet: vec4<f32>,
+  @location(12) thermal: vec4<f32>,
 };
 
 fn hidden() -> VOut {
@@ -5645,8 +5695,7 @@ fn strand(root: vec3<f32>, dir: vec3<f32>, len: f32, bend: vec3<f32>, wave: vec3
   return o;
 }
 
-@vertex
-fn vsEdgeFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+fn edgeFuzzVertex(vi: u32, ii: u32) -> VOut {
   let ei = ii / FIBERS_PER_EDGE;
   let fi = ii % FIBERS_PER_EDGE;
   let root0 = edgeRoots[3u * ei];
@@ -5783,6 +5832,17 @@ fn vsEdgeFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) 
   return strand(tip, dir, len, bend, wv * (0.3 * len), 1.5 + 2.5 * hashf(seed + 16u), m, vi, acrossW, N, outW, lenB * t0 * dot(dirB, outW), tauEnd, tauRim, h, vec4<u32>(0u, m.source, l, seed));
 }
 
+@vertex
+fn vsEdgeFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  var o = edgeFuzzVertex(vi, ii);
+  let c = edgeList[ii / FIBERS_PER_EDGE] & 0x0FFFFFFFu;
+  var l = 0u;
+  for (var i = 1u; i < R.counts.y; i++) { if (c >= R.layers[i].field.x) { l = i; } }
+  let field = R.layers[l].field;
+  o.thermal = burnAt(l, vec2<f32>(f32((c - field.x) % field.y), f32((c - field.x) / field.y)));
+  return o;
+}
+
 // A smooth wave of period 1 between -1 and 1 (a parabola per half period: within 0.06 of a sine).
 fn wave(x: f32) -> f32 {
   let f = fract(x) * 2.0 - 1.0;
@@ -5867,7 +5927,7 @@ fn fsFuzz(in: VOut) -> @location(0) vec4<f32> {
   let undyed = edgeFibre(R.layers[in.id.z].refine.w, in.id.y, 1.0);
   let cu = in.litU * exp(-tauX) + in.msU * exp(-diffusion(undyed) * tauX);
   let cd = in.litD * exp(-tauX) + in.msD * exp(-diffusion(edgeFibre(R.layers[in.id.z].refine.w, in.id.y, 0.0)) * tauX);
-  return vec4<f32>(mix(cu, cd, cov.y), cov.x);
+  return vec4<f32>(burnColour(mix(cu, cd, cov.y), in.thermal), cov.x);
 }
 `,
   _e = `// Resolve HDR to the display: one tone map and one output encoding. A staged experience adds the
@@ -7016,6 +7076,7 @@ var Fe = class {
           { binding: 16, visibility: M, texture: { sampleType: `depth` } },
           { binding: 17, visibility: M, texture: { sampleType: `float` } },
           { binding: 18, visibility: M, sampler: { type: `filtering` } },
+          P(19, M),
         ],
       }),
       Ie = e.createBindGroupLayout({
@@ -7028,6 +7089,7 @@ var Fe = class {
           P(4),
           ...Fe(9, N),
           { binding: 11, visibility: N, texture: { sampleType: `depth` } },
+          P(19),
         ],
       }),
       Le = e.createBindGroupLayout({
@@ -7045,6 +7107,7 @@ var Fe = class {
           ...Fe(9),
           P(11),
           { binding: 12, visibility: M, texture: { sampleType: `depth` } },
+          P(19, N),
         ],
       }),
       Re = { format: `depth32float`, depthWriteEnabled: !0, depthCompare: `less` },
@@ -7150,6 +7213,7 @@ var Fe = class {
           { binding: 16, resource: i },
           { binding: 17, resource: this.printView },
           { binding: 18, resource: this.printSampler },
+          { binding: 19, resource: { buffer: n.fire.state } },
         ],
       })),
         (this.groups[`thread${t}`] = e.createBindGroup({
@@ -7168,6 +7232,7 @@ var Fe = class {
             { binding: 9, resource: r },
             { binding: 10, resource: this.shadowSampler },
             { binding: 12, resource: i },
+            { binding: 19, resource: { buffer: n.fire.state } },
           ],
         })));
     for (let [t, n, r, i] of [
@@ -7196,6 +7261,7 @@ var Fe = class {
         { binding: 9, resource: Ye },
         { binding: 10, resource: this.shadowSampler },
         { binding: 11, resource: Xe },
+        { binding: 19, resource: { buffer: n.fire.state } },
       ],
     });
     let Ze = l(e, `post`, d + _e);
@@ -7535,6 +7601,7 @@ var Fe = class {
           { binding: 16, resource: l },
           { binding: 17, resource: this.printView },
           { binding: 18, resource: this.printSampler },
+          { binding: 19, resource: { buffer: t.fire.state } },
         ],
       });
   }
@@ -7830,6 +7897,7 @@ var Fe = class {
       C.setBindGroup(0, this.groups.fuzz),
       C.setPipeline(this.pipes.edgeFuzz),
       C.drawIndirect(this.piecesArgs, 16),
+      this.fireView?.draw(C),
       C.end(),
       this.encodePost(e, r, a(3)));
   }
@@ -10334,9 +10402,12 @@ fn slip(@builtin(global_invocation_id) gid: vec3<u32>) {
 @group(0) @binding(10) var<storage, read_write> fieldEvents: array<atomic<u32>>;
 // per 16 crossings, bit 2 e + f: the separated state before the step (sepSnapshot -> fieldUpdate*),
 // then the pull-out marks (pullMark -> pullApply)
+// followed by two floats/crossing of slip progress, then two of committed damage targets.
 @group(0) @binding(11) var<storage, read_write> pullBits: array<u32>;
 // sound source anchors (common.wgsl nearestSource): positions of the held grips, w > 0 in use
 @group(0) @binding(12) var<uniform> SRC: array<vec4<f32>, 4>;
+
+${releaseWGSL}
 
 const NO_STRAIN: f32 = 1e30;
 const CUT: u32 = 255u;
@@ -10504,17 +10575,21 @@ fn fieldUpdateYarn(gid: u32, f: u32) {
   }
   let dk = select(1u, 0u, f == 1u);
   let dm = select(0u, 1u, f == 1u);
-  let eps = interpolatedStrain(l, f, k0 + (Pn >> 1u) * dk, m0 + (Pn >> 1u) * dm);
-  if (eps >= 0.5 * NO_STRAIN || eps <= 0.0) { return; }
+  let sampledStrain = interpolatedStrain(l, f, k0 + (Pn >> 1u) * dk, m0 + (Pn >> 1u) * dm);
+  let eps = select(max(0.0, sampledStrain), 0.0, sampledStrain >= 0.5 * NO_STRAIN);
   let y = P.layers[l].yarn[f];
   let tension = axialTension(y, eps);
+  let total = fieldTotalY();
+  let damageMemory = (total + 15u) / 16u + 2u * total;
+  var committed = false;
   // No crossing can soften even at the largest force amplification (exact early out).
   var minPeak = 1e30;
   for (var p = 0u; p < Pn; p++) {
     let c = F.x + (m0 + p * dm) * F.y + k0 + p * dk;
     minPeak = min(minPeak, strength[c][f] * f32(B) / areaAt(c, f));
+    committed = committed || bitcast<f32>(pullBits[damageMemory + 2u * c + f]) > f32(damageAt(c, f)) / 255.0 + 1e-4;
   }
-  if (tension * (1.0 + SHARE_FRACTION * f32(SHARE_RUN)) <= minPeak) { return; }
+  if (!committed && tension * (1.0 + SHARE_FRACTION * f32(SHARE_RUN)) <= minPeak) { return; }
   // friction the crossings can pass to this yarn (shareCap): compaction of one crossing plus the wrap
   // force of the crossing yarn's tension at the middle of the span
   let g = 1u - f;
@@ -10554,9 +10629,16 @@ fn fieldUpdateYarn(gid: u32, f: u32) {
   }
   let sharedStrain = strainAtTension(y, bestForce * f32(B) / areaAt(best, f));
   let d = yarnDamage(y, f32(B), areaAt(best, f), strength[best][f], soft, sharedStrain);
-  let bestCode = select(min(u32(floor(d * 255.0)), PULLED - 1u), CUT, d >= 1.0);
   let word = field[best];
   let oldCode = (word >> (8u * f)) & 0xFFu;
+  // Keep the irreversible constitutive target separate from its short delayed
+  // response: force redistribution must not rescue fibres already fractured.
+  let history = max(d, bitcast<f32>(pullBits[damageMemory + 2u * best + f]));
+  pullBits[damageMemory + 2u * best + f] = bitcast<u32>(history);
+  // Redistribute load while a fracture develops. Its force/strength onset is
+  // unchanged; physical time prevents an entire bundle failing in one update.
+  let progress = advanceCohesion(f32(oldCode) / 255.0, history, P.hg.x, fractureTime(y.crimpStrain));
+  let bestCode = select(min(u32(floor(progress * 255.0 + 1e-4)), PULLED - 1u), CUT, history >= 1.0 && progress >= 0.99);
   if (bestCode > oldCode) {
     field[best] = (word & ~(0xFFu << (8u * f))) | (bestCode << (8u * f));
     atomicStore(&fieldEvents[0], 1u);
@@ -10598,8 +10680,9 @@ fn fieldTotalY() -> u32 {
 
 // Pull-out of free yarn ends (yarnField.ts pullOut, recoilLength): a crossing still interlaced leaves
 // the weave once the nearest cut along its yarn (through crossings already pulled out) lies within the
-// end's shear-lag retraction (T eps - W) / f at the local strain, its tension capped at the yarn's peak.
-const RECOIL_MAX: i32 = 12;
+// end's shear-lag retraction (T eps - W) / f at local strain, tension capped at its peak.
+// A bounded physical-time slip fraction advances only while that energy can overcome friction.
+const RECOIL_MAX: i32 = 64;
 
 fn breakDistance(F: vec4<u32>, f: u32, k: u32, m: u32) -> i32 {
   let pos = i32(select(m, k, f == 0u));
@@ -10623,11 +10706,11 @@ fn breakDistance(F: vec4<u32>, f: u32, k: u32, m: u32) -> i32 {
   return best;
 }
 
-fn pullsOut(l: u32, F: vec4<u32>, c: u32, f: u32, k: u32, m: u32) -> bool {
+fn pullDrive(l: u32, F: vec4<u32>, c: u32, f: u32, k: u32, m: u32) -> f32 {
   let d = breakDistance(F, f, k, m);
-  if (d < 0) { return false; }
+  if (d < 0) { return 0.0; }
   let eps = interpolatedStrain(l, f, k, m);
-  if (eps >= 0.5 * NO_STRAIN || eps <= 0.0) { return false; }
+  if (eps >= 0.5 * NO_STRAIN || eps <= 0.0) { return 0.0; }
   let mat = P.layers[l];
   let g = 1u - f;
   let ec = interpolatedStrain(l, g, k, m);
@@ -10646,7 +10729,7 @@ fn pullsOut(l: u32, F: vec4<u32>, c: u32, f: u32, k: u32, m: u32) -> bool {
   let e = min(eps, strainAtTension(y, strength[c][f] / share));
   let comp = share * (axialTension(y, e) * e - axialEnergyDensity(y, e));
   let fric = mat.a.y * (nodes[n].n0 / f32(bu * bv) + mat.a.z * tCross);
-  return comp * pitch >= (f32(d) - 0.5) * pitch * fric;
+  return max(0.0, comp / max((f32(d) - 0.5) * fric, 1e-9) - 1.0);
 }
 
 // One invocation per 16 crossings: which ends pull out of their next crossing this substep.
@@ -10668,7 +10751,11 @@ fn pullMark(@builtin(global_invocation_id) gid: vec3<u32>) {
     let m = (c - F.x) / F.y;
     for (var f = 0u; f < 2u; f++) {
       if (damageAt(c, f) >= PULLED) { continue; }
-      if (pullsOut(l, F, c, f, k, m)) { bits |= 1u << (2u * e + f); }
+      let memory = (total + 15u) / 16u + 2u * c + f;
+      let drive = pullDrive(l, F, c, f, k, m);
+      let progress = advancePull(bitcast<f32>(pullBits[memory]), drive, P.hg.x, P.layers[l].yarn[f].crimpStrain);
+      pullBits[memory] = bitcast<u32>(progress);
+      if (progress >= 1.0) { bits |= 1u << (2u * e + f); }
     }
   }
   pullBits[w] = bits;
@@ -11883,7 +11970,7 @@ var Pt = class {
     ),
       (this.fieldU = o(e, `fieldU`, d, i)),
       (this.fieldEvents = o(e, `fieldEvents`, new Uint32Array([1, 0, 0, 0]))),
-      (this.pullBits = a(e, `pullBits`, 4 * Math.ceil(t.fieldDamage.length / 2 / 16))),
+      (this.pullBits = a(e, `pullBits`, pullMemoryBytes(t.fieldDamage.length / 2))),
       (this.tails = o(e, `tails`, Float32Array.from(t.tails))),
       (this.ext = a(e, `ext`, 48 * r)),
       (this.counters = a(e, `counters`, 160)),
@@ -12411,6 +12498,7 @@ var Pt = class {
   }
   setField(e) {
     (this.device.queue.writeBuffer(this.field, 0, Mt(e, this.scene.fieldArea)),
+      this.device.queue.writeBuffer(this.pullBits, 0, new Uint32Array(this.pullBits.size / 4)),
       this.device.queue.writeBuffer(this.fieldEvents, 0, new Uint32Array([1])));
   }
   setState(e, t) {
@@ -15197,7 +15285,10 @@ var ClipRecorder = class {
 
 // settle substeps after a warm start from the denim's drape
 const WARM_SETTLE = 48;
-const TOOLS = [`hand`, `blade`, `claw`, `fist`, `pin`, `air`];
+const TOOLS = [`hand`, `blade`, `claw`, `fist`, `pin`, `air`, `fire`];
+function makeFabricFire(device, solver) {
+  return new FabricFire(device, solver, _, f);
+}
 // fist: sphere radius, heights (m) and timing (s) of a punch; claw: tip depth under the sheet, gap, radius
 const FIST = {
   radius: 0.024,
@@ -15274,6 +15365,8 @@ const Q = Dt.h,
     fistPicks = new Set();
     claws = /* @__PURE__ */ new Map();
     airJets = /* @__PURE__ */ new Map();
+    firePoints = new Map();
+    fire = null;
     pinSeq = 0;
     simTime = 0;
     // simulated seconds per real second (slow motion below 1)
@@ -15350,8 +15443,9 @@ const Q = Dt.h,
         (this.interaction = new He(this.device, this.solver, this.scene)),
         (this.solver.preSubstep = (e) => this.interaction.encodeSubstep(e)),
         (this.body = new on(this.device, this.solver, this.scene)),
+        (this.fire = this.solver.fire = makeFabricFire(this.device, this.solver)),
         (this.solver.postCommit = (e) => {
-          (this.body.encodePierce(e), this.body.encodeSlash(e));
+          (this.body.encodePierce(e), this.body.encodeSlash(e), this.fire.encode(e));
         }),
         (this.solver.preAssemble = (e) => {
           (this.body.encode(e), this.interaction.encode(e));
@@ -15359,6 +15453,7 @@ const Q = Dt.h,
         (this.topology = new tn(this.device, this.solver, this.scene, () => this.interaction.coreNodes)),
         (this.renderer = new Fe(this.device, d, this.solver, this.scene)),
         (this.renderer.airflowData = this.body.windData),
+        (this.renderer.fireView = createFireView(this.device, this.renderer, this.fire)),
         this.renderer.resize(r, i),
         this.mount === `hanging` &&
           Object.assign(this.renderer, {
@@ -15371,7 +15466,7 @@ const Q = Dt.h,
         this.solver.setFloor(this.renderer.floorZ),
         (this.speedProbe = this.device.createBuffer({
           label: `speedProbe`,
-          size: 224,
+          size: 240,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })),
         Z(0.7));
@@ -15472,6 +15567,7 @@ const Q = Dt.h,
       this.audioPort?.postMessage({ reset: !0 });
       this.damageCounts = [0, 0];
       this.probeSteps = 0;
+      this.fire?.reset();
       let e = this.device.createCommandEncoder({ label: `reset` });
       (e.copyBufferToBuffer(this.snapshot.x, 0, this.solver.x, 0, this.solver.x.size),
         e.copyBufferToBuffer(this.snapshot.segs, 0, this.solver.segs, 0, this.solver.segs.size),
@@ -15480,6 +15576,7 @@ const Q = Dt.h,
         e.clearBuffer(this.solver.v),
         e.clearBuffer(this.solver.ext),
         e.clearBuffer(this.solver.counters),
+        e.clearBuffer(this.solver.pullBits),
         e.clearBuffer(this.solver.acousticSources),
         this.renderer.resetTopology(e),
         this.device.queue.submit([e.finish()]),
@@ -15634,13 +15731,18 @@ const Q = Dt.h,
       return { origin: s, dir: E(w([o[0] / o[3], o[1] / o[3], o[2] / o[3]], s)) };
     }
     toolCursor() {
-      return { blade: `crosshair`, claw: `cell`, fist: `pointer`, pin: `copy`, air: `crosshair` }[this.tool] ?? `grab`;
+      return (
+        { blade: `crosshair`, claw: `cell`, fist: `pointer`, pin: `copy`, air: `crosshair`, fire: `crosshair` }[
+          this.tool
+        ] ?? `grab`
+      );
     }
     setTool(e) {
       if (!TOOLS.includes(e) || e === this.tool) return;
       // hands let go; pins stay (they are the point of the pin tool)
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.claws.clear());
       this.clearAir();
+      this.clearFire();
       this.fistPicks.clear();
       for (let [e, t] of [...this.grips]) t.pinned || this.endGrip(e);
       this.down.clear();
@@ -15709,6 +15811,58 @@ const Q = Dt.h,
         this.width,
         this.height,
         this.pickRadius(event),
+      );
+    }
+    clearFire() {
+      this.firePoints?.clear();
+      this.fire?.clearSources();
+    }
+    firePointer(event) {
+      if (event.phase === `up` || event.phase === `cancel`) {
+        this.firePoints.delete(event.id);
+        this.fire?.clearSources();
+        return;
+      }
+      let source = this.firePoints.get(event.id);
+      if (!source) {
+        if (event.phase !== `down` || this.firePoints.size >= 4) return;
+        source = { node: null, sample: null, busy: false };
+        this.firePoints.set(event.id, source);
+      }
+      source.sample = event;
+      this.pickFire(event.id, source);
+    }
+    pickFire(id, source) {
+      if (source.busy || !source.sample) return;
+      source.busy = true;
+      const sample = source.sample,
+        token = this.pickToken;
+      source.sample = null;
+      this.pickToolSurface(sample).then(
+        (hit) => {
+          source.busy = false;
+          if (this.firePoints.get(id) !== source || token !== this.pickToken) return;
+          source.node = hit?.node ?? null;
+          // A hole has no fuel. The pick is the actual deformed surface, and the
+          // selected material node keeps the igniter attached while cloth moves.
+          if (hit) {
+            this.wake();
+            this.dirty = true;
+          }
+          this.fire.step(
+            0,
+            this.simTime,
+            [...this.firePoints.values()].filter((s) => s.node !== null),
+            this.body.windData,
+          );
+          this.pickFire(id, source);
+        },
+        () => {
+          if (this.firePoints.get(id) === source) {
+            this.firePoints.delete(id);
+            this.fire.clearSources();
+          }
+        },
       );
     }
     // Punch the visible surface, including a fold already billowing away from its rest plane.
@@ -16096,6 +16250,10 @@ const Q = Dt.h,
         this.airPointer(e);
         return;
       }
+      if (this.tool === `fire`) {
+        this.firePointer(e);
+        return;
+      }
       if (this.tool === `claw`) {
         this.clawPointer(e);
         return;
@@ -16209,6 +16367,7 @@ const Q = Dt.h,
     releaseAll(preservePins = !1) {
       this.fistPicks.clear();
       this.clearAir();
+      this.clearFire();
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.body?.clearStrokes(), this.claws.clear());
       ((this.fists.length = 0), this.body && this.body.count > 0 && !this.stage && this.body.setPose([], Q));
       for (let [e, grip] of [...this.grips]) if (!preservePins || !grip.pinned) this.endGrip(e);
@@ -16216,6 +16375,7 @@ const Q = Dt.h,
     }
     cancelPicks() {
       this.clearAir();
+      this.clearFire();
       this.fistPicks.clear();
       this.claws.clear();
       // A pending screen-space hit belongs to the camera that submitted it.
@@ -16260,6 +16420,12 @@ const Q = Dt.h,
     }
     stepHandles(e, t, inputStep = e / this.timeScale) {
       ((this.simTime += e), this.stepProps(e), this.stepAir(e), this.body.tickWind(this.simTime, e));
+      this.fire?.step(
+        e,
+        this.simTime,
+        [...this.firePoints.values()].filter((s) => s.node !== null),
+        this.body.windData,
+      );
       let view;
       for (let [n, r] of [...this.grips]) {
         if (r.pinned) {
@@ -16349,21 +16515,35 @@ const Q = Dt.h,
       const measuredGrips = [...this.grips.values()].filter((grip) => !grip.pinned);
       const measureLoad = measuredGrips.length > 0 && !!this.interaction.gripGoal;
       const measureTails = !!this.renderer.tailCount;
+      const measureFire = !!this.fire;
+      const fireGeneration = this.fire?.generation;
       ((this.probeSteps = 0), (this.probeBusy = !0));
       let r = this.device.createCommandEncoder({ label: `restProbe` });
       (r.copyBufferToBuffer(this.solver.counters, 0, t, 0, 16),
         measureLoad && r.copyBufferToBuffer(this.interaction.gripGoal, 0, t, 16, 192),
         measureTails && r.copyBufferToBuffer(this.renderer.tailCount, 0, t, 208, 16),
+        measureFire && r.copyBufferToBuffer(this.fire.count, 0, t, 224, 16),
         r.clearBuffer(this.solver.counters, 8, 4),
         this.device.queue.submit([r.finish()]),
         t.mapAsync(GPUMapMode.READ).then(
           () => {
             let e = t.getMappedRange(),
-              r = Math.max(new Float32Array(e)[2], measureTails ? new Uint32Array(e, 208, 4)[2] * 0.001 : 0),
+              r = Math.max(
+                new Float32Array(e)[2],
+                measureTails ? new Uint32Array(e, 208, 4)[2] * 0.001 : 0,
+                measureFire && new Uint32Array(e, 224, 4)[0] ? 0.004 : 0,
+              ),
               i = new Uint32Array(e, 0, 2),
               counts = [i[0], i[1]],
               a = counts[0] + counts[1];
             let force = 0;
+            if (
+              measureFire &&
+              !new Uint32Array(e, 224, 4)[0] &&
+              !this.firePoints.size &&
+              fireGeneration === this.fire.generation
+            )
+              this.fire.enabled = false;
             if (measureLoad) {
               const load = new Float32Array(e);
               for (const grip of measuredGrips) {
@@ -16402,14 +16582,24 @@ const Q = Dt.h,
       // Spend frames where they matter: direct interaction can run at 60 Hz. The GPU queue
       // still gates every frame, and the solver retains its fixed 120 Hz timestep.
       const interacting =
-        this.down.size || this.strokes.size || this.claws.size || this.fists.length || this.airJets.size;
+        this.down.size ||
+        this.strokes.size ||
+        this.claws.size ||
+        this.fists.length ||
+        this.airJets.size ||
+        this.firePoints.size;
       const interval = interacting ? 1000 / 60 - 2 : 1000 / 30 - 2;
       if (this.inFlight || (!this.asleep && !this.paused && e - this.lastPresent < interval)) return;
       const workStarted = performance.now();
       const measureWork =
         interacting && this.visible && !this.paused && !this.stage && !this.recorder && !this.captureWanted;
       ((this.lastFrame = e),
-        (this.body.windOn || this.airJets.size > 0 || this.fists.length > 0 || this.claws.size > 0) &&
+        (this.body.windOn ||
+          this.airJets.size > 0 ||
+          this.fists.length > 0 ||
+          this.claws.size > 0 ||
+          this.firePoints.size > 0 ||
+          this.fire?.enabled) &&
           !this.stage &&
           !this.paused &&
           this.wake());
@@ -16640,6 +16830,8 @@ const Q = Dt.h,
           rested: this.rested,
           wind: this.windLevel,
           airJets: this.airJets.size,
+          fireSources: this.firePoints.size,
+          burning: this.fire?.enabled ?? false,
           timeScale: this.timeScale,
           paused: this.paused,
           camera: { ...this.camera, target: [...this.camera.target] },

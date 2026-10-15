@@ -65,7 +65,7 @@ function fixture({ projected = false } = {}) {
     w: (a, b) => a.map((x, i) => x - b[i]),
     te: (v, scale) => v.map((x) => x * scale),
     KNIFE: { pickWindow: 0.012 },
-    TOOLS: ["hand", "blade", "claw", "fist", "pin", "air"],
+    TOOLS: ["hand", "blade", "claw", "fist", "pin", "air", "fire"],
     Ot: { duration: 0.1, newtonIterations: 4 },
     GPUMapMode: { READ: 1 },
   });
@@ -1369,4 +1369,42 @@ test("hanging framing adapts to orientation while preserving user zoom and ignor
   const fov = f.engine.camera.fovY;
   f.engine.setSize(1688, 780, 844, 390);
   assert.equal(f.engine.camera.fovY, fov);
+});
+
+test("Fire follows picked material and holes, release and cancellation cannot leave an igniter", async () => {
+  const f = fixture(),
+    calls = [];
+  f.engine.fire = {
+    clearSources() {
+      calls.push([]);
+    },
+    step(dt, time, sources) {
+      calls.push(Array.from(sources, (s) => s.node));
+    },
+  };
+  f.engine.setTool("fire");
+  const event = { id: 42, phase: "down", x: 150, y: 300, time: 1000, pointerType: "mouse" };
+  f.engine.pointer(event);
+  f.engine.pointer({ ...event, phase: "up" });
+  f.picks[0].resolve({ node: 5, position: [0, 0, 0] });
+  await flush();
+  assert.equal(f.engine.firePoints.size, 0, "released picks cannot ignite later");
+  f.engine.pointer(event);
+  f.picks[1].resolve({ node: 9, position: [0, 0.1, 0] });
+  await flush();
+  assert.deepEqual(calls.at(-1), [9], "igniter follows actual visible material");
+  f.engine.pointer({ ...event, phase: "move", x: 220 });
+  f.picks[2].resolve(null);
+  await flush();
+  assert.deepEqual(calls.at(-1), [], "moving across a hole removes the heat source");
+  f.engine.pointer({ ...event, phase: "move", x: 230 });
+  f.engine.cancelPicks();
+  f.picks[3].resolve({ node: 12, position: [0, 0, 0] });
+  await flush();
+  assert.equal(f.engine.firePoints.size, 0, "camera/gesture cancellation invalidates pending fire picks");
+  f.engine.pointer(event);
+  f.picks[4].resolve({ node: 5, position: [0, 0, 0] });
+  await flush();
+  f.engine.setTool("air");
+  assert.equal(f.engine.firePoints.size, 0, "switching tools removes every igniter");
 });

@@ -1,7 +1,10 @@
+import { freeYarnWGSL } from "../src/free-yarn.js";
 import { checkTails } from "./tail-checks.mjs";
 import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "../src/tail-memory.js";
 import { frayMaterialWGSL } from "../src/fray-material.js";
 import { airflowWGSL } from "../src/airflow.js";
+import { releaseWGSL, pullMemoryBytes } from "../src/yarn-release.js";
+import { burnAppearanceWGSL, FabricFire, createFireView, burnComputeWGSL, flameWGSL } from "../src/burn.js";
 // Optional GPU correctness checks, separate from Node tests: no full scene or frame-rate claims.
 // Install Playwright, or point PLAYWRIGHT_MODULE at an existing installation.
 import assert from "node:assert/strict";
@@ -9,6 +12,8 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { checkGripFeedback } from "./grip-feedback-checks.mjs";
 import { checkAirflow } from "./airflow-checks.mjs";
+import { checkBurn } from "./burn-checks.mjs";
+import { checkRelease } from "./release-checks.mjs";
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
@@ -17,6 +22,12 @@ const context = vm.createContext({
   TAIL_HISTORY_BYTES,
   frayMaterialWGSL,
   airflowWGSL,
+  freeYarnWGSL,
+  releaseWGSL,
+  pullMemoryBytes,
+  burnAppearanceWGSL,
+  FabricFire,
+  createFireView,
   self: {},
   GPUBufferUsage: { STORAGE: 128, COPY_DST: 8, COPY_SRC: 4, UNIFORM: 64 },
   GPUShaderStage: { COMPUTE: 4, VERTEX: 1, FRAGMENT: 2 },
@@ -240,6 +251,8 @@ try {
           tail,
           prep,
           airflow: common + drag + body,
+          combustion: common + burnComputeWGSL,
+          flames: vm.runInContext("Pe({layers:[{bundle:[5,5]}]}, false) + oe", context) + flameWGSL,
         },
         mechanicsCode,
         fibreCode,
@@ -299,7 +312,7 @@ try {
     }
   }
   console.log(
-    `GPU checks passed: 9 production modules compiled, ${cases.length} force cases, ${fibreCases.length} loose-fibre and ${fibreCases.length} fringe colours.`,
+    `GPU checks passed: 11 production modules compiled, ${cases.length} force cases, ${fibreCases.length} loose-fibre and ${fibreCases.length} fringe colours.`,
   );
   console.log(`Adapter: ${result.description}. Correctness only; no real-phone performance claim.`);
   const feedback = await page.evaluate(checkGripFeedback, common + grip);
@@ -335,6 +348,10 @@ fn check(@builtin(global_invocation_id) gid: vec3<u32>) {
 }`;
   const tails = await page.evaluate(checkTails, { code: tail, responseCode, memoryBytes: TAIL_HISTORY_BYTES });
   console.log("Free-tail checks passed: " + JSON.stringify(tails));
+  const release = await page.evaluate(checkRelease, { code: common + field });
+  console.log("Progressive yarn release checks passed: " + JSON.stringify(release));
+  const combustion = await page.evaluate(checkBurn, { code: common + burnComputeWGSL });
+  console.log("Combustion checks passed: " + JSON.stringify(combustion));
   const airflow = await page.evaluate(checkAirflow, common + drag + body);
   assert.deepEqual(airflow.errors, []);
   console.log(

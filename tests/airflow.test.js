@@ -1,6 +1,9 @@
+import { freeYarnWGSL } from "../src/free-yarn.js";
 import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "../src/tail-memory.js";
 import { frayMaterialWGSL } from "../src/fray-material.js";
 import { airflowWGSL } from "../src/airflow.js";
+import { releaseWGSL, pullMemoryBytes } from "../src/yarn-release.js";
+import { burnAppearanceWGSL, FabricFire, createFireView } from "../src/burn.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,6 +15,12 @@ const scope = vm.createContext({
   TAIL_HISTORY_BYTES,
   frayMaterialWGSL,
   airflowWGSL,
+  freeYarnWGSL,
+  releaseWGSL,
+  pullMemoryBytes,
+  burnAppearanceWGSL,
+  FabricFire,
+  createFireView,
   self: {},
   GPUBufferUsage: { STORAGE: 128, COPY_DST: 8, COPY_SRC: 4, UNIFORM: 64 },
   GPUShaderStage: { COMPUTE: 4, VERTEX: 1, FRAGMENT: 2 },
