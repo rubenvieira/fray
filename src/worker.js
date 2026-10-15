@@ -1,3 +1,6 @@
+import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "./tail-memory.js";
+import { frayMaterialWGSL } from "./fray-material.js";
+import { airflowWGSL } from "./airflow.js";
 import { prepareMount, mountCamera, hangingRail, toToolSpace, fromToolSpace, normalizeMount } from "./mount.js";
 import { targetSpeed } from "./hand.js";
 
@@ -1896,7 +1899,9 @@ function A(e, t) {
     s = C(o, a);
   return { eye: r, view: a, proj: o, viewProj: s, invViewProj: ae(s) };
 }
-var oe = `// Shared render definitions: frame/layer uniforms, hashing and noise, the woven yarn height model,
+var oe =
+    frayMaterialWGSL +
+    `// Shared render definitions: frame/layer uniforms, hashing and noise, the woven yarn height model,
 // yarn appearance and the fiber BRDF. Used by the surface, explicit-yarn, fuzz and shadow passes so
 // intact cloth and freed yarns are the same material.
 
@@ -2150,7 +2155,7 @@ const THREAD_VERTS: u32 = 34u;
 const FIBERS_PER_CHUNK: u32 = 20u;
 const FIBER_VERTS: u32 = 14u;
 // vec4 per run of the per-frame thread geometry (thread_prep.wgsl, thread_tail.wgsl)
-const RUN_GEO: u32 = 9u;
+const RUN_GEO: u32 = 10u;
 
 // A thread run's record (threads.wgsl threadScan).
 struct RunInfo {
@@ -2375,6 +2380,17 @@ fn tartanYarn(i: i32) -> vec3<f32> {
   return red;
 }
 
+// Reflectance of fibres from a particular yarn, shared by fringe and loose yarns.
+fn frayedYarnReflectance(material: u32, fam: u32, yarn: i32, pale: f32) -> vec3<f32> {
+  if (material == 0u) {
+    if (fam == 0u) { return vec3<f32>(0.64, 0.61, 0.55); }
+    return mix(vec3<f32>(0.054, 0.078, 0.16), vec3<f32>(0.6, 0.62, 0.66), pale);
+  }
+  let exposure = frayProfile(material).amount.z * pale;
+  if (material == 2u) { return mix(tartanYarn(yarn), vec3<f32>(0.7, 0.65, 0.6), exposure); }
+  return mix(fabricRimDyed(material), fabricRimPale(material), exposure);
+}
+
 // Detached surface fibres keep the identity of the yarn they came from. In a tartan,
 // that includes its stripe: unravelling a navy or green yarn cannot turn its hair red.
 fn looseFibreAlbedo(material: u32, fam: u32, yarn: i32, seed: u32) -> vec3<f32> {
@@ -2383,11 +2399,7 @@ fn looseFibreAlbedo(material: u32, fam: u32, yarn: i32, seed: u32) -> vec3<f32> 
     if (fam == 0u) { return vec3<f32>(0.44, 0.44, 0.43); }
     return select(vec3<f32>(0.08, 0.12, 0.27), vec3<f32>(0.40, 0.42, 0.47), pale);
   }
-  if (material == 2u) {
-    // The same exposed-wool blend as yarnLook at full wear and loosening.
-    return mix(tartanYarn(yarn), vec3<f32>(0.7, 0.65, 0.6), select(0.0, 0.2625, pale));
-  }
-  return select(fabricRimDyed(material), fabricRimPale(material), pale);
+  return frayedYarnReflectance(material, fam, yarn, select(0.0, 1.0, pale));
 }
 
 // Ring-dyed indigo warp and undyed weft. \`pix\` is the pixel footprint in metres (filters fibre-scale
@@ -4433,6 +4445,7 @@ struct RunGeo {
   // the free tail beyond reach: its slot in tails (-1: none) and its length (m)
   tail: i32,
   tailLen: f32,
+  sag: vec3<f32>,
   pA: vec3<f32>,
   pB: vec3<f32>,
   tA: vec3<f32>,
@@ -4468,8 +4481,8 @@ fn runCenter(ri: RunInfo, g: RunGeo, cA: vec3<f32>, cB: vec3<f32>, p: f32) -> Ce
   }
   if (ri.heldA && ri.heldB) {
     let tr = clamp((p - ri.drawA) / span, 0.0, 1.0);
-    o.p = mix(g.pA, g.pB, tr);
-    o.d = (g.pB - g.pA) / span;
+    o.p = mix(g.pA, g.pB, tr) + g.sag * (4.0 * tr * (1.0 - tr));
+    o.d = ((g.pB - g.pA) + g.sag * (4.0 - 8.0 * tr)) / span;
     return o;
   }
   // held at one end: along its chain as far as the chain holds (shifted to meet the held end), then
@@ -4526,6 +4539,7 @@ fn runGeoZero() -> RunGeo {
   g.reach = 0.0;
   g.tail = -1;
   g.tailLen = 0.0;
+  g.sag = vec3<f32>(0.0);
   g.pA = vec3<f32>(0.0);
   g.pB = vec3<f32>(0.0);
   g.tA = vec3<f32>(1.0, 0.0, 0.0);
@@ -4637,6 +4651,7 @@ fn runGeoAt(r: u32) -> RunGeo {
   g.reach = h.y;
   g.tail = i32(h.z);
   g.tailLen = h.w;
+  g.sag = runGeo[RUN_GEO * r + 9u].xyz;
   g.pA = runGeo[RUN_GEO * r + 1u].xyz;
   g.pB = runGeo[RUN_GEO * r + 2u].xyz;
   g.tA = runGeo[RUN_GEO * r + 3u].xyz;
@@ -4661,6 +4676,8 @@ fn runGeoAt(r: u32) -> RunGeo {
 @group(0) @binding(9) var<storage, read> kappaM: array<u32>;
 // (runCenter reads the solved tails; threadPrep does not)
 var<private> tails: array<vec4<f32>, 1>;
+
+${airflowWGSL}
 
 override MAX_RUNS: u32 = 65536u;
 
@@ -4766,6 +4783,24 @@ fn threadPrep(@builtin(global_invocation_id) gid: vec3<u32>) {
     runGeo[RUN_GEO * r + 7u] = root[0];
     runGeo[RUN_GEO * r + 8u] = root[1];
   }
+  var sag = vec3<f32>(0.0);
+  if (!g.chain && ri.heldA && ri.heldB) {
+    let LR = R.layers[ri.layer];
+    let rest = (ri.drawB - ri.drawA) * select(LR.pitch.y, LR.pitch.x, ri.fam == 0u);
+    let chord = g.pB - g.pA;
+    let distance = length(chord);
+    if (distance > 1e-8 && rest > distance * 1.001) {
+      let T = chord / distance;
+      let air = airflowAt(0.5 * (g.pA + g.pB));
+      let load = vec3<f32>(0.0, 0.0, -9.81) + 0.6 * length(air) * air;
+      let lateral = load - dot(load, T) * T;
+      let normal = centerAt(ri, ri.drawA).nrm;
+      let fallback = normal - dot(normal, T) * T;
+      let direction = normalize(lateral + normalize(fallback + vec3<f32>(1e-9, 0.0, 0.0)) * 0.05);
+      sag = direction * bridgeSagAmount(distance, rest);
+    }
+  }
+  runGeo[RUN_GEO * r + 9u] = vec4<f32>(sag, 0.0);
   // the tail's slot is set by threadTail
   runGeo[RUN_GEO * r] = vec4<f32>(select(0.0, 1.0, g.chain), reach, -1.0, tailLen);
   runGeo[RUN_GEO * r + 1u] = vec4<f32>(g.pA, 0.0);
@@ -4815,14 +4850,17 @@ fn tailRoot(ri: RunInfo, g: RunGeo, cA: vec3<f32>, cB: vec3<f32>) -> array<vec4<
 @group(0) @binding(8) var<storage, read> faceCells: array<u32>;
 @group(0) @binding(9) var<storage, read> faceItems: array<vec4<f32>>;
 
+${tailMemoryWGSL}
+${airflowWGSL}
+
 override MAX_RUNS: u32 = 65536u;
 
 // A yarn held at one end hangs beyond the last span its chain holds as a heavy elastic rod clamped along
 // the yarn's direction there (as runCenter left it). Freed and untwisted, its fibres slide on one
 // another, so it bends as its fibres do side by side (count x a fibre's stiffness), under its own
 // weight, with the curl its spinning set in it. Where its shape would pass through the cloth it rests
-// on it instead, on the side it came from. Solved afresh each frame (equilibrium: a yarn this light and
-// stiff settles faster than a frame), so it carries no state across the runs' rebuilds.
+// on it instead, on the side it came from. Its material equilibrium drives a damped bending mode;
+// point positions and velocities survive run-list rebuilds by held-yarn identity.
 
 // bending stiffness of a cotton fibre: E (8 GPa) x I of its collapsed ribbon (20 x 7 um), N m^2
 const FIBRE_EI: f32 = 4.6e-12;
@@ -4963,22 +5001,49 @@ fn threadTail(@builtin(global_invocation_id) gid: vec3<u32>) {
 fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len: f32) {
   let LR = R.layers[ri.layer];
   let fibres = select(LR.loose.z, LR.loose.w, ri.fam == 1u);
-  let EI = fibres * FIBRE_EI;
-  let w = fibres * FIBRE_LIN * GRAVITY;
+  let profile = frayProfile(LR.refine.w);
+  let EI = fibres / profile.fibre.y * FIBRE_EI * profile.amount.w;
+  let mass = fibres * FIBRE_LIN;
+  let slot = tailSlot(tailIdentity(ri), u32(TF.params.w) + 1u);
+  if (slot < 0) { atomicAdd(&tailCount[1], 1u); }
+  var dt = 0.0;
+  var rootV = vec3<f32>(0.0);
+  var remembered = false;
+  if (slot >= 0) {
+    let prev = tailMemory[slot].root;
+    dt = TF.params.y - prev.w;
+    remembered = prev.w >= 0.0 && dt >= 0.0 && dt <= 0.12
+      && abs(tailMemory[slot].shape.w - len) < 0.2 * len;
+    if (remembered && dt > 1e-7) { rootV = (q - prev.xyz) / dt; }
+    if (remembered && dt <= 1e-7) {
+      for (var i = 0u; i <= TAIL_SEGS; i++) { tails[k * TAIL_SEGS_1 + i] = tailMemory[slot].p[i]; }
+      return;
+    }
+  }
+  let omega = 3.516 * sqrt(EI / mass) / (len * len);
+  let wind = airflowAt(q + dir0 * (0.5 * len)) - rootV;
+  let crossWind = wind - dot(wind, dir0) * dir0;
+
   let h = len / f32(TAIL_SEGS);
   let rY = select(LR.loose.x, LR.loose.y, ri.fam == 1u);
+  let drag = 1.225 * profile.fibre.w * 2.0 * rY * length(crossWind);
+  let damping = 0.9 * omega + drag / mass;
   // the curl spinning set in the yarn: radius 5 to 20 mm about an axis across it
   let seed = hash11((ri.layer * 7919u + ri.yarn) * 2u + ri.fam + 0x7a11u);
   let across = normalize(cross(dir0, vec3<f32>(hashf(seed) - 0.5, hashf(seed + 1u) - 0.5, hashf(seed + 2u) - 0.5)) + vec3<f32>(1e-9, 0.0, 0.0));
-  let curl = across / (5e-3 + 15e-3 * hashf(seed + 3u));
+  let curl = across / (profile.fibre.z * (0.65 + 0.7 * hashf(seed + 3u)));
   // rotation vectors per segment (its turn from the one before, per unit length): the weight beyond
   // each node bends it by its moment over EI, plus the curl
   var kap: array<vec3<f32>, TAIL_SEGS>;
   var t: array<vec3<f32>, TAIL_SEGS>;
   var pts: array<vec3<f32>, TAIL_SEGS_1>;
-  for (var i = 0u; i < TAIL_SEGS; i++) { kap[i] = curl; }
+  var airSamples: array<vec3<f32>, TAIL_SEGS>;
+  for (var i = 0u; i < TAIL_SEGS; i++) {
+    kap[i] = curl;
+    airSamples[i] = airflowAt(q + dir0 * (h * (f32(i) + 0.5))) - rootV;
+  }
   // bending length (EI / w)^(1/3): the scale over which the weight bends it
-  let ramp = clamp(ceil(4.0 * len / pow(EI / w, 1.0 / 3.0)), 1.0, f32(TAIL_ITERS / 2u));
+  let ramp = clamp(ceil(4.0 * len / pow(EI / (mass * GRAVITY), 1.0 / 3.0)), 1.0, f32(TAIL_ITERS / 2u));
   for (var it = 0u; it < TAIL_ITERS; it++) {
     var ti = dir0;
     pts[0] = q;
@@ -4987,16 +5052,20 @@ fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len:
       t[i] = ti;
       pts[i + 1u] = pts[i] + ti * h;
     }
-    let load = w * h * min(1.0, f32(it + 1u) / ramp);
-    var S = vec3<f32>(0.0);
-    var m = 0.0;
+    let load = min(1.0, f32(it + 1u) / ramp);
+    var forceSum = vec3<f32>(0.0);
+    var momentSum = vec3<f32>(0.0);
     var change = 0.0;
     for (var j = 0; j < i32(TAIL_SEGS); j++) {
       let i = TAIL_SEGS - 1u - u32(j);
-      S += pts[i] + 0.5 * h * t[i];
-      m += 1.0;
-      // moment about node i of the weight of the segments beyond it
-      let M = cross(S - m * pts[i], vec3<f32>(0.0, 0.0, -load));
+      let mid = pts[i] + 0.5 * h * t[i];
+      let air = airSamples[i];
+      let acrossAir = air - dot(air, t[i]) * t[i];
+      let aero = 1.225 * profile.fibre.w * rY * length(acrossAir) * acrossAir;
+      let force = h * load * (vec3<f32>(0.0, 0.0, -mass * GRAVITY) + aero);
+      forceSum += force;
+      momentSum += cross(mid - q, force);
+      let M = momentSum - cross(pts[i] - q, forceSum);
       let kn = mix(kap[i], M / EI + curl, 0.5);
       change = max(change, length(kn - kap[i]) * h);
       kap[i] = kn;
@@ -5014,12 +5083,32 @@ fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len:
   let reach = rY + TAIL_CLEAR;
   // faces within the tail's length of its root (plus its reach and a face's half diagonal, ~3 mm)
   if (FACE_HASH) { gatherFaces(q, len + reach + 3e-3); }
+  var equilibrium = q;
   var p = q;
   var arc = 0.0;
   let b = k * (TAIL_SEGS + 1u);
   tails[b] = vec4<f32>(q, 0.0);
+  if (slot >= 0) { tailMemory[slot].p[0] = vec4<f32>(q, 0.0); tailMemory[slot].v[0] = vec4<f32>(rootV, 0.0); }
   for (var i = 0u; i < TAIL_SEGS; i++) {
-    var nxt = p + t[i] * h;
+    equilibrium += t[i] * h;
+    var trial = equilibrium;
+    var velocity = rootV;
+    if (slot >= 0) {
+      if (remembered) {
+        let old = tailMemory[slot].p[i + 1u].xyz;
+        let relV = tailMemory[slot].v[i + 1u].xyz - rootV;
+        let response = rodResponse(old - (equilibrium - rootV * dt), relV, omega, damping, dt);
+        trial = equilibrium + response[0];
+        velocity = rootV + response[1];
+      } else {
+        // Newly released material starts along its exit, rather than popping
+        // straight to a gravity equilibrium. The next physical step bends it.
+        trial = q + dir0 * (f32(i + 1u) * h);
+      }
+    }
+    var direction = trial - p;
+    if (length(direction) < 1e-10) { direction = t[i]; }
+    var nxt = p + normalize(direction) * h;
     arc += h;
     if (FACE_HASH) {
       let c = tailContact(p, nxt, reach, root, arc < TAIL_ROOT_FREE);
@@ -5060,7 +5149,19 @@ fn tailSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len:
       nxt.z = max(nxt.z, min(zf, p.z));
     }
     tails[b + i + 1u] = vec4<f32>(nxt, 0.0);
+    if (slot >= 0) {
+      if (remembered) { velocity += (nxt - trial) / max(dt, 1e-7); }
+      let tangent = normalize(nxt - p + vec3<f32>(1e-12, 0.0, 0.0));
+      velocity -= tangent * dot(velocity - rootV, tangent);
+      tailMemory[slot].p[i + 1u] = vec4<f32>(nxt, 0.0);
+      tailMemory[slot].v[i + 1u] = vec4<f32>(velocity, 0.0);
+      atomicMax(&tailCount[2], u32(ceil(length(velocity - rootV) * 1000.0)));
+    }
     p = nxt;
+  }
+  if (slot >= 0) {
+    tailMemory[slot].root = vec4<f32>(q, TF.params.y);
+    tailMemory[slot].shape = vec4<f32>(dir0, len);
   }
 }
 `,
@@ -5248,6 +5349,7 @@ fn fibre(root: vec3<f32>, dir: vec3<f32>, len: f32, bend: vec3<f32>, wave: vec3<
 @vertex
 fn vsThreadFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> FOut {
   let ch = chunkRef(ii / FIBERS_PER_CHUNK);
+  let profile = frayProfile(R.layers[ch.ri.layer].refine.w);
   if (ch.a >= ch.b) { return hiddenF(); }
   let seed = hash11((ch.ri.layer * 7919u + ch.ri.yarn) * 613u + u32(ch.a) * 131u + (ii % FIBERS_PER_CHUNK) * 6007u + ch.ri.fam);
   let p = mix(ch.a, ch.b, hashf(seed));
@@ -5261,10 +5363,12 @@ fn vsThreadFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32
   let splay = tp.tip * tp.tip;
   let dir = normalize(radial * mix(0.45 + 0.6 * hashf(seed + 2u), 0.8, splay) + tp.t * toward * mix(1.6, 1.0, splay));
   let rl = hashf(seed + 3u);
-  let len = (0.15e-3 + 0.8e-3 * rl * rl) * (1.0 + 2.0 * splay);
+  let len = (0.15e-3 + 0.8e-3 * rl * rl) * (profile.shape.y / 0.9e-3) * (1.0 + 2.0 * splay);
   let bend = vec3<f32>(hashf(seed + 4u) - 0.5, hashf(seed + 5u) - 0.5, hashf(seed + 6u) - 0.8) * (0.9 * len);
   let wave = vec3<f32>(hashf(seed + 7u) - 0.5, hashf(seed + 8u) - 0.5, hashf(seed + 9u) - 0.5) * (0.3 * len);
-  return fibre(tp.p + radial * tp.radius, dir, len, bend, wave, 1.0 + 2.0 * hashf(seed + 10u), 25e-6, vi, u1, vec4<u32>(ch.ri.yarn, ch.ri.fam, ch.ri.layer, seed));
+  var o = fibre(tp.p + radial * tp.radius, dir, len, bend, wave, (1.0 + 2.0 * hashf(seed + 10u)) * profile.shape.w, profile.fibre.x, vi, u1, vec4<u32>(ch.ri.yarn, ch.ri.fam, ch.ri.layer, seed));
+  o.alpha *= min(1.0, profile.amount.y / 5.0);
+  return o;
 }
 
 @fragment
@@ -5285,7 +5389,7 @@ fn fsThreadFuzz(in: FOut) -> @location(0) vec4<f32> {
   ge = `// The free edges' fibre (render-only, attached to its material). Each open side of an edge crossing
 // (pieces.wgsl edgeList, roots placed by edge_roots.wgsl) is where the yarn running across it ended.
 // Of its fibres (its linear density over a fibre's) those that slipped out of the break instead of
-// breaking at it protrude, FRAY_LEN on average; the yarns along the edge, which lost their crossings,
+// breaking at it protrude, the material's protruding length on average; the yarns along the edge, which lost their crossings,
 // shed hair over it. Per side the strands are:
 //  - sheets of the rim yarns' hair, rooted behind the edge and lying out over it;
 //  - the compact yarn end, up to where its twist opens;
@@ -5310,102 +5414,29 @@ fn fsThreadFuzz(in: FOut) -> @location(0) vec4<f32> {
 const FIBER_PTS: u32 = FIBER_VERTS / 2u;
 // strands per open side (FIBERS_PER_EDGE are dealt round a crossing's open sides)
 const SIDE_STRANDS: u32 = 6u;
-// mean projected width of a cotton fibre (a twisted ribbon, 12-20 um across)
-const FIBRE_W: f32 = 16e-6;
-// fraction of a broken staple yarn's fibres that slip out of the break rather than break across it:
-// the twist presses the core fibres hardest, so the outer (sheath) fibres slip far more often
-const SLIP_SHEATH: f32 = 0.8;
-const SLIP_CORE: f32 = 0.3;
-// fraction of a ring-dyed warp's fibre carrying indigo: its sheath (dye penetrates ~30% of the radius)
-const RING_DYED: f32 = 0.5;
-// the protruding fraction of a broken yarn's fibre, and the dyed share of a warp's protruding fibre
-const FRAY_PROTRUDE: f32 = RING_DYED * SLIP_SHEATH + (1.0 - RING_DYED) * SLIP_CORE;
-const FRAY_DYED: f32 = RING_DYED * SLIP_SHEATH / FRAY_PROTRUDE;
-// mean length by which they protrude (cotton staple is ~25 mm, but abraded fibre is broken short and
-// a loosened end curls back on itself)
-const FRAY_LEN: f32 = 1.5e-3;
-// hair shed by a loosened yarn along the edge, as fibre length per length of yarn (Uster H of an
-// abraded, untwisted coarse yarn), the band of such yarns behind the edge, the hairs' mean length,
-// and their dyed share on a warp (hair is its surface fibre: the dyed sheath)
-const RIM_HAIR: f32 = 10.0;
-const RIM_BAND: f32 = 1.5e-3;
-const RIM_HAIR_LEN: f32 = 0.9e-3;
+// Staple hair, filament ends and curl differ by fabric. These are reconstructed
+// fibres attached to the actual torn edge, not extra breaks in the mechanics.
+const FRAY_DYED: f32 = 0.8 / 1.1;
 const RIM_DYED: f32 = 0.85;
-// half-angle tangent of a fan: the protruding fibres diverge by ~20 degrees from the end's axis
-const FAN_CONE: f32 = 0.35;
 // fibres evaluated per sheet (a sheet of more gives each the coverage of several)
 const SHEET_FIBRES: u32 = 48u;
 // a loose fibre's lateral wander: cotton's convolutions (amplitude, range of wavelengths), and the
 // gentler curl of its free length (amplitude per length free, range of wavelengths: loose cotton
 // bends with radii of a millimetre or two)
-const CRIMP_AMP: f32 = 0.04e-3;
 const CRIMP_MIN: f32 = 0.3e-3;
 const CRIMP_MAX: f32 = 1.2e-3;
 const CURL: f32 = 0.15;
 const CURL_MIN: f32 = 2.0e-3;
 const CURL_MAX: f32 = 6.0e-3;
-// single-scattering albedo of a cotton fibre, from the woven material's reflectances (yarnLook): a
-// deep mass of fibre of albedo w reflects R = (1 - s) / (1 + s), s = sqrt(1 - w). Indigo-dyed (the
-// dyed yarn surface, ~(0.054, 0.078, 0.16)), undyed warp core (0.6, 0.62, 0.66), loose weft
-// (0.64, 0.61, 0.55).
-const DYED_FIBRE: vec3<f32> = vec3<f32>(0.195, 0.27, 0.476);
-const CORE_FIBRE: vec3<f32> = vec3<f32>(0.938, 0.945, 0.958);
-const WEFT_FIBRE: vec3<f32> = vec3<f32>(0.952, 0.941, 0.916);
-// jute fibre (burlap, material 1): tan (0.46, 0.29, 0.12) and the darker stained fibre (0.22, 0.12, 0.045)
-const JUTE_FIBRE: vec3<f32> = vec3<f32>(0.863, 0.698, 0.382);
-const JUTE_DARK_FIBRE: vec3<f32> = vec3<f32>(0.59, 0.38, 0.165);
-
-// the material the sheet is woven from (one layer per scene; LayerR.refine.w is its id)
+// Keep the source yarn's dye in every fringe pass. Ring-dyed denim exposes
+// its pale core; dyed wool/silk and metal do not turn into a white cotton tuft.
 fn fabricId() -> u32 { return R.layers[0].refine.w; }
-// single-scattering albedo of fibre whose deep mass reflects R (see DYED_FIBRE)
 fn fibreAlbedo(r: vec3<f32>) -> vec3<f32> {
   let s = (1.0 - r) / (1.0 + r);
   return 1.0 - s * s;
 }
-// the fibre of each fabric: its dyed (surface) fibre and its undyed / core fibre (weft alike)
-fn dyedFibre() -> vec3<f32> {
-  switch fabricId() {
-    case 1u: { return JUTE_DARK_FIBRE; }
-    case 2u: { return fibreAlbedo(vec3<f32>(0.55, 0.03, 0.04)); }
-    case 3u: { return fibreAlbedo(vec3<f32>(0.45, 0.02, 0.04)); }
-    case 4u: { return fibreAlbedo(vec3<f32>(0.36, 0.29, 0.19)); }
-    case 5u: { return fibreAlbedo(vec3<f32>(0.45, 0.45, 0.52)); }
-    case 6u: { return fibreAlbedo(vec3<f32>(0.6, 0.56, 0.48)); }
-    case 7u: { return fibreAlbedo(vec3<f32>(0.5, 0.33, 0.08)); }
-    case 8u: { return fibreAlbedo(vec3<f32>(0.06, 0.06, 0.07)); }
-    default: { return DYED_FIBRE; }
-  }
-}
-fn coreFibre() -> vec3<f32> {
-  switch fabricId() {
-    case 1u: { return JUTE_FIBRE; }
-    case 2u: { return fibreAlbedo(vec3<f32>(0.7, 0.65, 0.6)); }
-    case 3u: { return fibreAlbedo(vec3<f32>(0.75, 0.35, 0.37)); }
-    case 4u: { return fibreAlbedo(vec3<f32>(0.62, 0.54, 0.4)); }
-    case 5u: { return fibreAlbedo(vec3<f32>(0.72, 0.72, 0.76)); }
-    case 6u: { return fibreAlbedo(vec3<f32>(0.8, 0.78, 0.72)); }
-    case 7u: { return fibreAlbedo(vec3<f32>(0.8, 0.62, 0.25)); }
-    case 8u: { return fibreAlbedo(vec3<f32>(0.22, 0.22, 0.24)); }
-    default: { return CORE_FIBRE; }
-  }
-}
-fn weftFibre() -> vec3<f32> {
-  switch fabricId() {
-    case 1u: { return JUTE_FIBRE; }
-    case 2u: { return fibreAlbedo(vec3<f32>(0.7, 0.65, 0.6)); }
-    case 3u: { return fibreAlbedo(vec3<f32>(0.7, 0.3, 0.33)); }
-    case 4u: { return fibreAlbedo(vec3<f32>(0.62, 0.54, 0.4)); }
-    case 5u: { return fibreAlbedo(vec3<f32>(0.7, 0.7, 0.74)); }
-    case 6u: { return fibreAlbedo(vec3<f32>(0.8, 0.78, 0.72)); }
-    case 7u: { return fibreAlbedo(vec3<f32>(0.42, 0.3, 0.08)); }
-    case 8u: { return fibreAlbedo(vec3<f32>(0.2, 0.2, 0.22)); }
-    default: { return WEFT_FIBRE; }
-  }
-}
-// the compact end of a broken warp: its dyed surface, paling as it untwists toward the fans (t)
-fn yarnEndSurface(t: f32) -> vec3<f32> {
-  let denim = mix(vec3<f32>(0.054, 0.078, 0.16), mix(DYED_FIBRE, CORE_FIBRE, 0.5), t * t);
-  return select(denim, mix(dyedFibre(), coreFibre(), 0.5 + 0.5 * t * t), fabricId() != 0u);
+fn edgeFibre(material: u32, source: u32, pale: f32) -> vec3<f32> {
+  return fibreAlbedo(frayedYarnReflectance(material, source & 1u, i32(source >> 1u), pale));
 }
 
 struct VOut {
@@ -5413,7 +5444,7 @@ struct VOut {
   @location(0) world: vec3<f32>,
   // coverage of a compact yarn end (its width over the drawn width)
   @location(2) alpha: f32,
-  // kind (0 fan of an end's fibre, 1 yarn end, 2 rim hair), its undyed fibre (0 warp core, 2 weft),
+  // kind (0 end fan, 1 compact yarn end, 2 rim hair), source yarn << 1 | family,
   // layer, seed
   @location(3) @interpolate(flat) id: vec4<u32>,
   // 0 at the root .. 1 at the tip
@@ -5441,12 +5472,12 @@ fn hidden() -> VOut {
 }
 
 // Fibres of one family per yarn (LayerR.loose: z picks, w warps).
-fn fibresPerYarn(L: LayerR, fam: u32) -> f32 { return select(L.loose.z, L.loose.w, fam == 1u); }
+fn fibresPerYarn(L: LayerR, fam: u32) -> f32 { return select(L.loose.z, L.loose.w, fam == 1u) / frayProfile(L.refine.w).fibre.y; }
 
 // Fraction of the end's protruding fibre that still reaches distance x (m) beyond the edge: their
-// protrusion is exponential with mean FRAY_LEN. Behind the edge, little of it folds back.
+// protrusion is exponential with mean frayProfile(fabricId()).shape.x. Behind the edge, little of it folds back.
 fn endReach(x: f32) -> f32 {
-  return select(exp(x / 0.3e-3), exp(-x / FRAY_LEN), x >= 0.0);
+  return select(exp(x / 0.3e-3), exp(-x / frayProfile(fabricId()).shape.x), x >= 0.0);
 }
 
 // Light leaving fibre of single-scattering albedo a at P (tangent T, toward the camera V), lit by the
@@ -5501,13 +5532,13 @@ fn fibreLight(key: vec4<f32>, over: vec4<f32>, cam: vec4<f32>, T: vec3<f32>, V: 
 }
 
 // What a strand is made of: fibres in it (0: a compact yarn end), its root width (m), how far its
-// fibres diverge (half-angle tangent), its dyed fraction and its undyed fibre (0 warp core, 2 weft).
+// fibres diverge (half-angle tangent), its dyed fraction and source yarn/family.
 struct Make {
   n: f32,
   w0: f32,
   fan: f32,
   dyed: f32,
-  undyed: u32,
+  source: u32,
 };
 
 // Vertex vi of a strand from \`root\` along unit \`dir\` over \`len\`, bent by \`bend\` (tip offset growing
@@ -5531,7 +5562,7 @@ fn strand(root: vec3<f32>, dir: vec3<f32>, len: f32, bend: vec3<f32>, wave: vec3
   let H = 0.5 * m.w0 + m.fan * len * t;
   if (m.n > 0.0) {
     // the fan, its fibres' wander and width, and a pixel's margin for the coverage filter
-    halfW = H + 1.6 * (CRIMP_AMP + CURL * len * t) + FIBRE_W * max(1.0, m.n / f32(SHEET_FIBRES)) + 0.5 * pixW;
+    halfW = H + 1.6 * ((0.04e-3 * frayProfile(fabricId()).shape.w) + CURL * len * t) + frayProfile(fabricId()).fibre.x * max(1.0, m.n / f32(SHEET_FIBRES)) + 0.5 * pixW;
     o.alpha = 1.0;
   } else {
     halfW = max(0.5 * m.w0, 0.5 * pixW);
@@ -5540,7 +5571,7 @@ fn strand(root: vec3<f32>, dir: vec3<f32>, len: f32, bend: vec3<f32>, wave: vec3
   let W = P + sideSign * halfW * B;
   o.pos = F.viewProj * vec4<f32>(W, 1.0);
   o.world = W;
-  o.id = id;
+  o.id = vec4<u32>(id.x, m.source, id.zw);
   o.along = t;
   o.lat = vec2<f32>(sideSign * halfW, H);
   o.sheet = vec4<f32>(m.n, 0.5 * m.w0, len, m.dyed);
@@ -5548,11 +5579,11 @@ fn strand(root: vec3<f32>, dir: vec3<f32>, len: f32, bend: vec3<f32>, wave: vec3
   // key may light the fringe from the other side)
   let x = x0 + dot(P - root, outW);
   let up = select(h, 1.0 - h, dot(N, F.keyPos.xyz - P) > 0.0);
-  let rim = select(1.0, exp(-x / RIM_HAIR_LEN), x > 0.0);
+  let rim = select(1.0, exp(-x / frayProfile(fabricId()).shape.y), x > 0.0);
   let tau0 = tauEnd * endReach(x) + tauRim * rim;
   let tau = up * tau0;
   let tauO = select(h, 1.0 - h, dot(N, F.overDir.xyz) > 0.0) * tau0;
-  let undyed = select(weftFibre(), coreFibre(), m.undyed == 0u);
+  let undyed = edgeFibre(R.layers[id.z].refine.w, m.source, 1.0);
   o.keyAcross = dot(normalize(F.keyPos.xyz - P), B) * sideSign;
   let key = fibreKey(P, dP, V);
   let over = fibreOver(P, dP, V);
@@ -5564,7 +5595,7 @@ fn strand(root: vec3<f32>, dir: vec3<f32>, len: f32, bend: vec3<f32>, wave: vec3
     o.litU = u.single;
     o.msU = u.multi;
     if (m.dyed > 0.0) {
-      let d = fibreLight(key, over, cam, dP, V, N, dyedFibre(), tau, tauO, tauC);
+      let d = fibreLight(key, over, cam, dP, V, N, edgeFibre(R.layers[id.z].refine.w, m.source, 0.0), tau, tauO, tauC);
       o.litD = d.single;
       o.msD = d.multi;
     } else {
@@ -5573,7 +5604,7 @@ fn strand(root: vec3<f32>, dir: vec3<f32>, len: f32, bend: vec3<f32>, wave: vec3
     }
   } else {
     // the compact yarn end: a warp shows its dyed surface, paling as it untwists toward the fans
-    let a = select(weftFibre(), yarnEndSurface(t), m.undyed == 0u);
+    let a = edgeFibre(R.layers[id.z].refine.w, m.source, 0.25 + 0.5 * t * t);
     let e = fibreLight(key, over, cam, dP, V, N, a, tau, tauO, tauC);
     o.litU = e.single + e.multi;
   }
@@ -5619,7 +5650,7 @@ fn vsEdgeFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) 
   let dU = edgeRoots[3u * ei + 1u].xyz;
   let dV = edgeRoots[3u * ei + 2u].xyz;
   var N = normalize(cross(dU, dV));
-  if (dot(N, F.camPos.xyz - root0.xyz) < 0.0) { N = -N; }
+  // This material frame does not flip when the camera crosses the sheet.
   let sg = select(-1.0, 1.0, (side & 1u) == 1u);
   // in the rest chart: out of the side, and along it
   let outR = select(vec2<f32>(0.0, sg), vec2<f32>(sg, 0.0), side < 2u);
@@ -5633,15 +5664,23 @@ fn vsEdgeFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) 
   let famAlong = 1u - fam;
   // side length along the edge: the spacing of the yarns that end across it
   let sideLen = select(LR.pitch.y, LR.pitch.x, fam == 1u);
-  let endHere = yarnCode(fieldY[c], fam) < PULLED_R;
+  let along = select((c - FL.x) / FL.y, (c - FL.x) % FL.y, fam == 0u);
+  let alongCount = select(FL.z, FL.y, fam == 0u);
+  let hasNext = select(along > 0u, along + 1u < alongCount, (side & 1u) == 1u);
+  let stride = select(FL.y, 1u, fam == 0u);
+  var nextCode = 255u;
+  if (hasNext) {
+    let next = select(c - stride, c + stride, (side & 1u) == 1u);
+    nextCode = yarnCode(fieldY[next], fam);
+  }
+  let endHere = severedEdgeEnd(yarnCode(fieldY[c], fam), nextCode, hasNext);
   // fibre of the side: the protruding end (absent when the yarn was pulled out of this crossing) and
-  // the hair of the band of rim yarns along the edge (RIM_BAND / pitchOut of them, each shedding
-  // RIM_HAIR of fibre length per length in hairs RIM_HAIR_LEN long)
-  let endFibres = select(0.0, FRAY_PROTRUDE * fibresPerYarn(LR, fam) * density, endHere);
-  let rimHair = RIM_HAIR * sideLen * (RIM_BAND / pitchOut) / RIM_HAIR_LEN * density;
+  // the rim yarns' hair: a material-specific band, hairiness and hair length
+  let endFibres = select(0.0, frayProfile(fabricId()).amount.x * fibresPerYarn(LR, fam) * density, endHere);
+  let rimHair = frayProfile(fabricId()).amount.y * sideLen * ((1.67 * frayProfile(fabricId()).shape.y) / pitchOut) / frayProfile(fabricId()).shape.y * density;
   // optical depths of the end's fibre at the edge and of the rim's hair, seen along the cloth normal
-  let tauEnd = endFibres * FIBRE_W / sideLen;
-  let tauRim = rimHair * FIBRE_W / sideLen;
+  let tauEnd = endFibres * frayProfile(fabricId()).fibre.x / sideLen;
+  let tauRim = rimHair * frayProfile(fabricId()).fibre.x / sideLen;
   // the side's strands, lowest first: rim hair, the yarn end, fans
   let nRim = select(1u, 2u, slots >= 5u);
   let nFan = slots - 1u - nRim;
@@ -5654,19 +5693,19 @@ fn vsEdgeFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) 
   if (j < nRim) {
     // hair of the loosened rim yarns: rooted up to the band's depth behind the edge, drawn out over it
     var m: Make;
+    m.source = (select((c - FL.x) / FL.y, (c - FL.x) % FL.y, famAlong == 1u) << 1u) | famAlong;
     m.n = rimHair / f32(nRim);
     if (m.n < 0.05) { return hidden(); }
     m.w0 = 0.2e-3;
-    m.fan = FAN_CONE;
+    m.fan = frayProfile(fabricId()).shape.z;
     m.dyed = select(0.0, RIM_DYED, famAlong == 1u);
-    m.undyed = select(2u, 0u, famAlong == 1u);
-    let back = (0.2e-3 + RIM_BAND * pow(hashf(seed + 17u), 1.5)) / pitchOut;
+    let back = (0.2e-3 + (1.67 * frayProfile(fabricId()).shape.y) * pow(hashf(seed + 17u), 1.5)) / pitchOut;
     let root = atSide - (dU * outR.x + dV * outR.y) * back;
     let spread = (hashf(seed + 3u) - 0.5) * 1.2;
     let dir = normalize(outW + acrossW * spread + N * (0.03 + 0.12 * h));
-    let len = back * pitchOut + clamp(-2.0 * RIM_HAIR_LEN * log(1.0 - 0.95 * hashf(seed + 5u)), 0.2e-3, 4.0e-3);
+    let len = back * pitchOut + clamp(-2.0 * frayProfile(fabricId()).shape.y * log(1.0 - 0.95 * hashf(seed + 5u)), 0.2e-3, 4.0e-3);
     let bend = cv * (0.7 * len) - N * (0.1 * len);
-    return strand(root + N * 0.06e-3, dir, len, bend, wv * (0.4 * len), 2.0 + 4.0 * hashf(seed + 16u), m, vi, acrossW, N, outW, -back * pitchOut, tauEnd, tauRim, h, vec4<u32>(2u, m.undyed, l, seed));
+    return strand(root + N * 0.06e-3, dir, len, bend, wv * (0.4 * len), 2.0 + 4.0 * hashf(seed + 16u), m, vi, acrossW, N, outW, -back * pitchOut, tauEnd, tauRim, h, vec4<u32>(2u, m.source, l, seed));
   }
   if (!endHere) { return hidden(); }
   // the yarn end standing out of the edge, untwisting from part-way along it; its fans splay from
@@ -5675,39 +5714,39 @@ fn vsEdgeFuzz(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) 
   let atEnd = root0.xyz + (dU * outR.x + dV * outR.y) * (0.5 - 0.15 * hashf(sb + 2u)) + (dU * alongR.x + dV * alongR.y) * (hashf(sb + 1u) - 0.5);
   let liftB = 0.1 + 0.45 * hashf(sb + 4u);
   let dirB = normalize(outW + acrossW * ((hashf(sb + 3u) - 0.5) * 0.8) + N * liftB);
-  let lenB = clamp(-2.0 * FRAY_LEN * log(1.0 - 0.98 * hashf(sb + 5u)), 0.6e-3, 8.0 * FRAY_LEN);
+  let lenB = clamp(-2.0 * frayProfile(fabricId()).shape.x * log(1.0 - 0.98 * hashf(sb + 5u)), 0.6e-3, 8.0 * frayProfile(fabricId()).shape.x);
   let droopB = vec3<f32>(0.0, 0.0, -0.3 * lenB) - N * (0.25 * lenB * liftB);
   let curlB = (acrossW * (hashf(sb + 6u) - 0.5) + N * (hashf(sb + 7u) - 0.5)) * (0.45 * lenB);
   // where the twist opens up: the core runs as a yarn up to t0 of lenB
-  let t0 = 0.15 + 0.3 * hashf(sb + 9u);
+  let t0 = min(0.15 + 0.3 * hashf(sb + 9u), (0.5 * pitchOut + 0.2 * frayProfile(fabricId()).shape.x) / lenB);
   let yarnD = 2.0 * select(LR.loose.y, LR.loose.x, fam == 0u);
   var m: Make;
-  m.undyed = select(2u, 0u, fam == 1u);
+  m.source = (select((c - FL.x) / FL.y, (c - FL.x) % FL.y, fam == 1u) << 1u) | fam;
   if (j == nRim) {
     m.n = 0.0;
     m.w0 = yarnD;
     m.fan = 0.0;
     m.dyed = 0.0;
-    return strand(atEnd, dirB, lenB * t0, (droopB + curlB) * (t0 * t0), curlB * 0.2, 1.0, m, vi, acrossW, N, outW, 0.0, tauEnd, tauRim, h, vec4<u32>(1u, m.undyed, l, sb));
+    return strand(atEnd, dirB, lenB * t0, (droopB + curlB) * (t0 * t0), curlB * 0.2, 1.0, m, vi, acrossW, N, outW, 0.0, tauEnd, tauRim, h, vec4<u32>(1u, m.source, l, sb));
   }
   // a fan of the end's protruding fibre (its share of them; a warp's mostly from the dyed sheath, a
   // weft's undyed throughout), from where the twist opened, splaying and drooping over the opening;
   // fans rise from the end's own direction toward the camera
   m.n = endFibres / f32(nFan);
   m.w0 = yarnD;
-  m.fan = FAN_CONE;
+  m.fan = frayProfile(fabricId()).shape.z;
   m.dyed = select(0.0, FRAY_DYED, fam == 1u);
   let tip = atEnd + dirB * (lenB * t0) + (droopB + curlB) * (t0 * t0);
   let tangent = normalize(dirB * lenB + (droopB + curlB) * (2.0 * t0));
   let k = f32(j - nRim - 1u) / max(f32(nFan) - 1.0, 1.0);
   let fs = vec3<f32>(hashf(seed + 3u), hashf(seed + 4u), hashf(seed + 5u)) - 0.5;
   let dir = normalize(tangent + acrossW * (0.9 * fs.x) + N * (0.1 + 0.6 * k + 0.3 * fs.y));
-  // fan lengths: exponential with mean 2 FRAY_LEN, so that its fibres, ending evenly along it,
-  // protrude FRAY_LEN on average beyond the end (cut off where a fibre's abraded length runs out)
-  let len = clamp(-2.0 * FRAY_LEN * log(1.0 - 0.98 * hashf(seed + 6u)), 0.4e-3, 4.0 * FRAY_LEN);
+  // Fan lengths are exponential. Individual fibres end along each fan,
+  // bounded by the material's abraded staple/filament length.
+  let len = clamp(-2.0 * frayProfile(fabricId()).shape.x * log(1.0 - 0.98 * hashf(seed + 6u)), 0.4e-3, 4.0 * frayProfile(fabricId()).shape.x);
   let droop = clamp(len / 1.5e-3, 0.0, 1.0);
   let bend = cv * (0.8 * len) - N * (0.4 * len * droop) + vec3<f32>(0.0, 0.0, -0.3 * len * droop);
-  return strand(tip, dir, len, bend, wv * (0.3 * len), 1.5 + 2.5 * hashf(seed + 16u), m, vi, acrossW, N, outW, lenB * t0 * dot(dirB, outW), tauEnd, tauRim, h, vec4<u32>(0u, m.undyed, l, seed));
+  return strand(tip, dir, len, bend, wv * (0.3 * len), 1.5 + 2.5 * hashf(seed + 16u), m, vi, acrossW, N, outW, lenB * t0 * dot(dirB, outW), tauEnd, tauRim, h, vec4<u32>(0u, m.source, l, seed));
 }
 
 // A smooth wave of period 1 between -1 and 1 (a parabola per half period: within 0.06 of a sine).
@@ -5727,8 +5766,8 @@ fn wave(x: f32) -> f32 {
 // resolve.
 fn sheetCover(seed: u32, n: f32, r0: f32, H: f32, len: f32, dyedFrac: f32, y: f32, t: f32, pix: f32, overCloth: bool) -> vec2<f32> {
   // past SHEET_FIBRES, each evaluated fibre stands for several side by side
-  let d = FIBRE_W * max(1.0, n / f32(SHEET_FIBRES));
-  let wander = CRIMP_AMP + CURL * len * t;
+  let d = frayProfile(fabricId()).fibre.x * max(1.0, n / f32(SHEET_FIBRES));
+  let wander = (0.04e-3 * frayProfile(fabricId()).shape.w) + CURL * len * t;
   let half = mix(r0, H, t) + wander;
   let alive = n * (1.0 - t);
   let spacing = 2.0 * half / max(alive, 1.0);
@@ -5743,7 +5782,7 @@ fn sheetCover(seed: u32, n: f32, r0: f32, H: f32, len: f32, dyedFrac: f32, y: f3
     let lo = abs(A - Bs);
     let hi = A + Bs;
     let density = clamp((hi - abs(y)) / max(hi - lo, 1e-9), 0.0, 1.0) / (2.0 * max(A, Bs));
-    mean = 1.0 - exp(-alive * FIBRE_W * density);
+    mean = 1.0 - exp(-alive * frayProfile(fabricId()).fibre.x * density);
   }
   if (resolve <= 0.0 || abs(y) > half + 0.6 * wander + 0.5 * pix + d) { return vec2<f32>(mean, dyedFrac); }
   // ends stratified along the sheet (fibre k ends in the k-th of count equal steps from the tip), so
@@ -5765,7 +5804,7 @@ fn sheetCover(seed: u32, n: f32, r0: f32, H: f32, len: f32, dyedFrac: f32, y: f3
     let along = t * len;
     let ph = along / mix(CRIMP_MIN, CRIMP_MAX, q.x) + r.w;
     let p = vec4<f32>(vec4<u32>(h2 & 255u, (h2 >> 8u) & 255u, (h2 >> 16u) & 255u, h2 >> 24u)) * (1.0 / 255.0);
-    let crimp = CRIMP_AMP * (0.4 + 1.2 * q.y) * smoothstep(0.0, 0.2, t) * wave(ph);
+    let crimp = (0.04e-3 * frayProfile(fabricId()).shape.w) * (0.4 + 1.2 * q.y) * smoothstep(0.0, 0.2, t) * wave(ph);
     let curl = CURL * along * (0.3 + 1.4 * p.x) * wave(along / mix(CURL_MIN, CURL_MAX, q.w) + p.y);
     let yk = mix((2.0 * r.y - 1.0) * r0, (2.0 * r.z - 1.0) * H, t) + crimp + curl;
     let dk = d * (0.75 + 0.5 * q.z);
@@ -5787,13 +5826,13 @@ fn fsFuzz(in: VOut) -> @location(0) vec4<f32> {
   if (cov.x < 0.002) { discard; }
   // the strand shadows itself across its width: a tuft is lit on the side toward the key and dark on
   // the far side, through the optical depth its own fibre presents across it (as for its coverage)
-  let half = mix(in.sheet.y, in.lat.y, in.along) + CRIMP_AMP + CURL * in.sheet.z * in.along;
-  let across = in.sheet.x * (1.0 - in.along) * FIBRE_W / (2.0 * half);
+  let half = mix(in.sheet.y, in.lat.y, in.along) + (0.04e-3 * frayProfile(fabricId()).shape.w) + CURL * in.sheet.z * in.along;
+  let across = in.sheet.x * (1.0 - in.along) * frayProfile(fabricId()).fibre.x / (2.0 * half);
   let s = clamp(0.5 - 0.5 * sign(in.keyAcross) * in.lat.x / half, 0.0, 1.0);
   let tauX = across * mix(0.5, s, abs(in.keyAcross));
-  let undyed = select(weftFibre(), coreFibre(), in.id.y == 0u);
+  let undyed = edgeFibre(R.layers[in.id.z].refine.w, in.id.y, 1.0);
   let cu = in.litU * exp(-tauX) + in.msU * exp(-diffusion(undyed) * tauX);
-  let cd = in.litD * exp(-tauX) + in.msD * exp(-diffusion(dyedFibre()) * tauX);
+  let cd = in.litD * exp(-tauX) + in.msD * exp(-diffusion(edgeFibre(R.layers[in.id.z].refine.w, in.id.y, 0.0)) * tauX);
   return vec4<f32>(mix(cu, cd, cov.y), cov.x);
 }
 `,
@@ -6578,6 +6617,10 @@ var Fe = class {
   threadDraw;
   tails;
   tailCount;
+  tailHistory;
+  tailWindU;
+  tailFrameU;
+  airflowData = null;
   kappa;
   cellDirty;
   piecesArgs;
@@ -6659,9 +6702,12 @@ var Fe = class {
       (this.threadCount = a(e, `threadCount`, 16)),
       (this.tails = a(e, `threadTails`, 272 * je)),
       (this.tailCount = a(e, `threadTailCount`, 16)),
+      (this.tailHistory = a(e, `threadTailHistory`, TAIL_HISTORY_BYTES)),
+      (this.tailWindU = a(e, `threadTailWind`, 160, i)),
+      (this.tailFrameU = a(e, `threadTailFrame`, 512, i)),
       (this.runs = a(e, `threadRuns`, 16 * Oe)),
       (this.chunks = a(e, `threadChunks`, 1048576)),
-      (this.runGeo = a(e, `threadRunGeo`, 144 * Oe)),
+      (this.runGeo = a(e, `threadRunGeo`, 160 * Oe)),
       (this.threadDraw = a(e, `threadDraw`, 48, r | GPUBufferUsage.INDIRECT)));
     let C = new Uint32Array(4 + c + ke + ke * _ + ke + c);
     (C.fill(4294967295, 4, 4 + c),
@@ -6763,6 +6809,7 @@ var Fe = class {
         7: this.runGeo,
         8: this.rsurf,
         9: this.kappa,
+        11: this.tailWindU,
       })));
     let ne = new f(e, `threadTail`, d + me);
     ((this.cpipes.threadTail = ne.pipeline(`threadTail`)),
@@ -6777,6 +6824,9 @@ var Fe = class {
         7: n.nodes,
         8: u ? u.cells : a(e, `noFaceCells`, 16),
         9: u ? u.items : a(e, `noFaceItems`, 32),
+        10: this.tailHistory,
+        11: this.tailWindU,
+        12: this.tailFrameU,
       })),
       (this.edgeTex = e.createTexture({
         label: `edgeField`,
@@ -7493,7 +7543,7 @@ var Fe = class {
     );
   }
   resetTopology(e) {
-    (e.clearBuffer(this.edgeSig), e.clearBuffer(this.kappa));
+    (e.clearBuffer(this.edgeSig), e.clearBuffer(this.kappa), e.clearBuffer(this.tailHistory));
   }
   resize(e, t) {
     if (e === this.width && t === this.height && this.hdr) return;
@@ -7542,7 +7592,7 @@ var Fe = class {
       n = D([e[0] + t[0], e[1] + t[1], e[2] + t[2]], e, Math.abs(t[2]) > 0.95 ? [0, 1, 0] : [0, 0, 1]);
     return C(ie(-0.45, P, -0.45, P, 0.7, 1.3), n);
   }
-  encode(e, t, n, r, i) {
+  encode(e, t, n, r, i, physicalTime = n) {
     let a = (e) => (i ? { querySet: i, beginningOfPassWriteIndex: 2 * e, endOfPassWriteIndex: 2 * e + 1 } : void 0);
     if (!this.hdr || !this.msaaColor || !this.msaaDepth || !this.postGroup) return;
     let o = this.post;
@@ -7600,6 +7650,10 @@ var Fe = class {
       p.set(h, 16),
       p.set([c[0] + 10 * g[0], c[1] + 10 * g[1], c[2] + 10 * g[2]], 36),
       this.device.queue.writeBuffer(this.frameOverU, 0, p));
+    // Tail dynamics use fixed physical time; film/grain keep their display clock.
+    p[53] = physicalTime;
+    this.device.queue.writeBuffer(this.tailFrameU, 0, p);
+    if (this.airflowData) this.device.queue.writeBuffer(this.tailWindU, 0, this.airflowData);
     let _ = this.scene.nodeCount;
     (e.clearBuffer(this.lists, 0, 16), e.clearBuffer(this.threadCount, 8, 4), e.clearBuffer(this.tailCount));
     let v = e.beginComputePass({ label: `renderPrep`, timestampWrites: a(0) }),
@@ -13347,50 +13401,8 @@ struct BladeU {
 // 1/2 (dx - h u_air)^T D (dx - h u_air). The Hessian stays D; the
 // additional gradient is -D h u_air. Assembly and line search use the same
 // quadratic. Cloth entrained in the air feels no further aerodynamic force.
-struct WindU {
-  // direction (xyz, unit), current speed (m/s)
-  dir: vec4<f32>,
-  // time (s), gust length (m), local jet radius (m), local jet speed (m/s)
-  params: vec4<f32>,
-  // Up to four air brushes: world position xyz, smoothly rising strength w.
-  jets: array<vec4<f32>, 4>,
-  // Tool-frame camera-ray dx/dz, dy/dz; w = 1 on hanging cloth. Follow each fold's depth.
-  aims: array<vec4<f32>, 4>,
-};
-
-@group(0) @binding(11) var<uniform> WD: WindU;
+${airflowWGSL}
 @group(0) @binding(12) var<storage, read> segs: array<Seg>;
-
-fn airflowAt(p: vec3<f32>) -> vec3<f32> {
-  let t = WD.params.x;
-  let k = 6.2831853 / max(WD.params.y, 0.01);
-  // Coherent travelling eddies: neighbouring threads see neighbouring air,
-  // rather than independent random impulses. Time is the cloth's physical time.
-  let a = k * (p.x + 0.3 * p.y) - 2.1 * t;
-  let b = 0.53 * k * (p.y - 0.4 * p.x) + 1.3 * t;
-  let gust = 0.65 + 0.22 * sin(a) + 0.13 * sin(b);
-  let eddy = vec3<f32>(0.12 * sin(b), 0.18 * cos(a), 0.28 * sin(a + b) + 0.16 * cos(1.7 * b));
-  var air = WD.dir.w * (gust * WD.dir.xyz + eddy);
-  for (var j = 0u; j < 4u; j++) {
-    let jet = WD.jets[j];
-    if (jet.w <= 0.0) { continue; }
-    let worldDelta = p - jet.xyz;
-    let hanging = WD.aims[j].w > 0.5;
-    let delta = select(worldDelta, vec3<f32>(worldDelta.x, worldDelta.z, -worldDelta.y), hanging);
-    let across = delta.xy - delta.z * WD.aims[j].xy;
-    // Compact smooth footprint, spreading and losing speed as it rises.
-    let rise = max(0.0, delta.z);
-    let radius = max(WD.params.z, 0.001) + 0.18 * rise;
-    let r2 = dot(across, across) / (radius * radius);
-    let falloff = max(0.0, 1.0 - r2);
-    let height = 1.0 / (1.0 + 18.0 * rise * rise);
-    let spread = vec3<f32>(across / radius * 0.22, 1.0);
-    let flow = spread * (WD.params.w * jet.w * falloff * falloff * height);
-    air += select(flow, vec3<f32>(flow.x, -flow.z, flow.y), hanging);
-  }
-  // Overlapping brushes must not multiply the air speed without limit.
-  return air * min(1.0, 12.0 / max(length(air), 1e-6));
-}
 
 @compute @workgroup_size(128)
 fn windTerms(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -15306,6 +15318,7 @@ const Q = Dt.h,
         }),
         (this.topology = new tn(this.device, this.solver, this.scene, () => this.interaction.coreNodes)),
         (this.renderer = new Fe(this.device, d, this.solver, this.scene)),
+        (this.renderer.airflowData = this.body.windData),
         this.renderer.resize(r, i),
         this.mount === `hanging` &&
           Object.assign(this.renderer, {
@@ -15318,7 +15331,7 @@ const Q = Dt.h,
         this.solver.setFloor(this.renderer.floorZ),
         (this.speedProbe = this.device.createBuffer({
           label: `speedProbe`,
-          size: 208,
+          size: 224,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })),
         Z(0.7));
@@ -16295,16 +16308,18 @@ const Q = Dt.h,
         epoch = this.releaseEpoch;
       const measuredGrips = [...this.grips.values()].filter((grip) => !grip.pinned);
       const measureLoad = measuredGrips.length > 0 && !!this.interaction.gripGoal;
+      const measureTails = !!this.renderer.tailCount;
       ((this.probeSteps = 0), (this.probeBusy = !0));
       let r = this.device.createCommandEncoder({ label: `restProbe` });
       (r.copyBufferToBuffer(this.solver.counters, 0, t, 0, 16),
         measureLoad && r.copyBufferToBuffer(this.interaction.gripGoal, 0, t, 16, 192),
+        measureTails && r.copyBufferToBuffer(this.renderer.tailCount, 0, t, 208, 16),
         r.clearBuffer(this.solver.counters, 8, 4),
         this.device.queue.submit([r.finish()]),
         t.mapAsync(GPUMapMode.READ).then(
           () => {
             let e = t.getMappedRange(),
-              r = new Float32Array(e)[2],
+              r = Math.max(new Float32Array(e)[2], measureTails ? new Uint32Array(e, 208, 4)[2] * 0.001 : 0),
               i = new Uint32Array(e, 0, 2),
               counts = [i[0], i[1]],
               a = counts[0] + counts[1];
@@ -16390,7 +16405,14 @@ const Q = Dt.h,
       if (
         (this.stage || this.reacquireSignal(e),
         (this.frameTexture = this.context.getCurrentTexture()),
-        this.renderer.encode(o, s, e / 1e3, this.frameTexture.createView()),
+        this.renderer.encode(
+          o,
+          s,
+          e / 1e3,
+          this.frameTexture.createView(),
+          undefined,
+          this.stage?.time ?? this.simTime,
+        ),
         this.captureWanted && this.encodeCapture(o, this.frameTexture),
         this.device.queue.submit([o.finish()]),
         this.captureIfRequested(),

@@ -1,3 +1,6 @@
+import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "../src/tail-memory.js";
+import { frayMaterialWGSL } from "../src/fray-material.js";
+import { airflowWGSL } from "../src/airflow.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -5,6 +8,10 @@ import vm from "node:vm";
 
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
 const scope = vm.createContext({
+  tailMemoryWGSL,
+  TAIL_HISTORY_BYTES,
+  frayMaterialWGSL,
+  airflowWGSL,
   self: {},
   GPUBufferUsage: { STORAGE: 128, COPY_DST: 8, COPY_SRC: 4, UNIFORM: 64 },
   GPUShaderStage: { COMPUTE: 4, VERTEX: 1, FRAGMENT: 2 },

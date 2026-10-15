@@ -1,3 +1,7 @@
+import { checkTails } from "./tail-checks.mjs";
+import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "../src/tail-memory.js";
+import { frayMaterialWGSL } from "../src/fray-material.js";
+import { airflowWGSL } from "../src/airflow.js";
 // Optional GPU correctness checks, separate from Node tests: no full scene or frame-rate claims.
 // Install Playwright, or point PLAYWRIGHT_MODULE at an existing installation.
 import assert from "node:assert/strict";
@@ -9,22 +13,30 @@ import { checkAirflow } from "./airflow-checks.mjs";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
 const context = vm.createContext({
+  tailMemoryWGSL,
+  TAIL_HISTORY_BYTES,
+  frayMaterialWGSL,
+  airflowWGSL,
   self: {},
   GPUBufferUsage: { STORAGE: 128, COPY_DST: 8, COPY_SRC: 4, UNIFORM: 64 },
   GPUShaderStage: { COMPUTE: 4, VERTEX: 1, FRAGMENT: 2 },
 });
 // Evaluating declarations creates no GPU device or scene; init is message-driven.
 vm.runInContext(source.replace(/^import .*;\n/gm, ""), context);
-const { common, field, grip, thread, appearance, materials, drag, body, mount, floor } = vm.runInContext(
-  `({
+const { common, field, grip, thread, appearance, materials, drag, body, mount, floor, fringe, tail, prep } =
+  vm.runInContext(
+    `({
   common: _, field: ot, grip: R, appearance: oe, drag: Ct, body: nn,
   thread: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + fe + he,
+  fringe: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + ge,
+  tail: Pe({layers:[{bundle:[5,5]}]}, false) + oe + me,
+  prep: Pe({layers:[{bundle:[5,5]}]}, false) + oe + fe + le + pe,
   mount: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + we,
   floor: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + Se,
   materials: Object.values(FABRICS).map(preset => preset.material)
 })`,
-  context,
-);
+    context,
+  );
 
 function shaderFunction(code, name) {
   const start = code.indexOf(`fn ${name}(`);
@@ -99,9 +111,11 @@ for (let material = 0; material < 9; material++)
     for (const yarn of [0, 23, 31, 40, 49, 98])
       for (let seed = 0; seed < 8; seed++) fibreCases.push([material, family, yarn, seed]);
   }
-const colourFunctions = ["hash11", "hashf", "fabricRimPale", "fabricRimDyed", "tartanYarn", "looseFibreAlbedo"]
-  .map((name) => shaderFunction(appearance, name))
-  .join("\n");
+const colourFunctions =
+  frayMaterialWGSL +
+  ["hash11", "hashf", "fabricRimPale", "fabricRimDyed", "tartanYarn", "frayedYarnReflectance", "looseFibreAlbedo"]
+    .map((name) => shaderFunction(appearance, name))
+    .join("\n");
 const fibreCode =
   colourFunctions +
   `
@@ -112,6 +126,18 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= arrayLength(&cases)) { return; }
   let c = cases[id.x];
   result[id.x] = vec4<f32>(looseFibreAlbedo(c.x, c.y, i32(c.z), c.w), 1.0);
+}`;
+
+const fringeCode =
+  colourFunctions +
+  `
+@group(0) @binding(0) var<storage, read> cases: array<vec4<u32>>;
+@group(0) @binding(1) var<storage, read_write> result: array<vec4<f32>>;
+@compute @workgroup_size(64)
+fn check(@builtin(global_invocation_id) id: vec3<u32>) {
+  if (id.x >= arrayLength(&cases)) { return; }
+  let c = cases[id.x];
+  result[id.x] = vec4<f32>(frayedYarnReflectance(c.x, c.y, i32(c.z), f32(c.w) / 7.0), 1.0);
 }`;
 
 const browser = await chromium.launch({
@@ -131,7 +157,7 @@ try {
   let result;
   try {
     result = await page.evaluate(
-      async ({ modules, mechanicsCode, fibreCode, cases, fibreCases }) => {
+      async ({ modules, mechanicsCode, fibreCode, fringeCode, cases, fibreCases }) => {
         const adapter = await navigator.gpu?.requestAdapter();
         if (!adapter) throw Error("No WebGPU adapter; GPU checks were not run.");
         const device = await adapter.requestDevice({ requiredLimits: { maxStorageBuffersPerShaderStage: 10 } });
@@ -195,12 +221,13 @@ try {
           new Uint32Array(fibreCases.flat()),
           fibreCases.length,
         );
+        const fringes = await run("edge yarn dye", fringeCode, new Uint32Array(fibreCases.flat()), fibreCases.length);
         const description =
           adapter.info.description ||
           `${adapter.info.vendor} ${adapter.info.architecture}`.trim() ||
           "SwiftShader (requested software backend)";
         device.destroy();
-        return { forces, colours, errors, description };
+        return { forces, colours, fringes, errors, description };
       },
       {
         modules: {
@@ -209,10 +236,14 @@ try {
           "loose threads": thread,
           mount,
           floor,
+          fringe,
+          tail,
+          prep,
           airflow: common + drag + body,
         },
         mechanicsCode,
         fibreCode,
+        fringeCode,
         cases,
         fibreCases,
       },
@@ -244,12 +275,66 @@ try {
     const denimWeft = colour(0, 0, 0, seed);
     assert.ok(Math.abs(denimWeft[0] - 0.44) < 1e-6 && Math.abs(denimWeft[2] - 0.43) < 1e-6);
   }
+
+  const fringeColour = (material, family, yarn, pale) => {
+    const i = fibreCases.findIndex((c) => c[0] === material && c[1] === family && c[2] === yarn && c[3] === pale);
+    return result.fringes.slice(4 * i, 4 * i + 3);
+  };
+  assert.ok(result.fringes.every((v) => Number.isFinite(v) && v >= 0 && v <= 1));
+  for (let pale = 0; pale < 8; pale++) {
+    for (const family of [0, 1]) {
+      const red = fringeColour(2, family, 0, pale),
+        navy = fringeColour(2, family, 40, pale),
+        green = fringeColour(2, family, 23, pale);
+      assert.ok(red[0] > 2.5 * red[1], "torn red yarn stays red, including its exposed fibres");
+      assert.ok(navy[2] > navy[0], "navy fringe retains its source stripe");
+      assert.ok(green[1] > green[0] && green[1] > green[2], "green fringe retains its source stripe");
+      assert.deepEqual(
+        fringeColour(2, family, 0, pale),
+        fringeColour(2, family, 98, pale),
+        "fringe repeats the actual sett",
+      );
+      const gold = fringeColour(7, family, 0, pale);
+      assert.ok(gold[0] > gold[1] && gold[1] > gold[2], "metal fringe stays gold");
+    }
+  }
   console.log(
-    `GPU checks passed: 6 production modules compiled, ${cases.length} force cases, ${fibreCases.length} fibre colours.`,
+    `GPU checks passed: 9 production modules compiled, ${cases.length} force cases, ${fibreCases.length} loose-fibre and ${fibreCases.length} fringe colours.`,
   );
   console.log(`Adapter: ${result.description}. Correctness only; no real-phone performance claim.`);
   const feedback = await page.evaluate(checkGripFeedback, common + grip);
   console.log(`Grip feedback checks passed: ${feedback.cases} GPU load, clamp and release cases.`);
+  const tailPrefix = vm.runInContext("Pe({layers:[{bundle:[5,5]}]}, false) + oe", context);
+  const responseCode =
+    tailPrefix +
+    tailMemoryWGSL +
+    `
+@group(0) @binding(0) var<storage, read_write> result: array<vec4<f32>>;
+@compute @workgroup_size(64)
+fn check(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= 12u) { return; }
+  let omega = 10.0 + 17.0 * f32(i % 3u);
+  let zeta = select(select(0.35, 1.0, i % 4u == 1u), 3.0, i % 4u >= 2u);
+  let d = vec3<f32>(0.01, -0.02, 0.015);
+  let v = vec3<f32>(0.08, 0.02, -0.04);
+  let dt = 0.004 + 0.012 * f32(i);
+  let full = rodResponse(d, v, omega, 2.0 * zeta * omega, dt);
+  let half = rodResponse(d, v, omega, 2.0 * zeta * omega, 0.5 * dt);
+  let split = rodResponse(half[0], half[1], omega, 2.0 * zeta * omega, 0.5 * dt);
+  let ratio = (dot(full[1], full[1]) + omega * omega * dot(full[0], full[0])) / (dot(v, v) + omega * omega * dot(d, d));
+  let rest = 0.02 + 0.006 * f32(i);
+  let distance = rest * (0.15 + 0.07 * f32(i));
+  let arc = bridgeArc(distance, bridgeSagAmount(distance, rest));
+  let here = select(0u, 255u, (i & 1u) != 0u);
+  let there = select(0u, 255u, (i & 2u) != 0u);
+  let hasNext = (i & 4u) != 0u;
+  let severed = severedEdgeEnd(here, there, hasNext);
+  result[16u + i] = vec4<f32>(select(0.0, 1.0, severed), f32(i), 0.0, 0.0);
+  result[i] = vec4<f32>(ratio, length(full[0] - split[0]), length(full[1] - split[1]), arc / rest);
+}`;
+  const tails = await page.evaluate(checkTails, { code: tail, responseCode, memoryBytes: TAIL_HISTORY_BYTES });
+  console.log("Free-tail checks passed: " + JSON.stringify(tails));
   const airflow = await page.evaluate(checkAirflow, common + drag + body);
   assert.deepEqual(airflow.errors, []);
   console.log(
