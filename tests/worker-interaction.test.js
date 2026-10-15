@@ -63,7 +63,7 @@ function fixture({ projected = false } = {}) {
     w: (a, b) => a.map((x, i) => x - b[i]),
     te: (v, scale) => v.map((x) => x * scale),
     KNIFE: { pickWindow: 0.012 },
-    TOOLS: ["hand", "blade", "claw", "fist", "pin"],
+    TOOLS: ["hand", "blade", "claw", "fist", "pin", "air"],
     Ot: { duration: 0.1, newtonIterations: 4 },
     GPUMapMode: { READ: 1 },
   });
@@ -107,7 +107,7 @@ function fixture({ projected = false } = {}) {
       },
       reset() {},
     },
-    body: { count: 0, tickWind() {}, clearStrokes() {}, cut: (a, b) => cuts.push([a, b]) },
+    body: { count: 0, tickWind() {}, setAirJets() {}, clearStrokes() {}, cut: (a, b) => cuts.push([a, b]) },
     planePoint: projected ? context.Engine.prototype.planePoint : (grip, point) => [point.x / 1000, point.y / 1000, 0],
     stepProps() {},
     reacquireSignal() {},
@@ -161,6 +161,84 @@ function fixture({ projected = false } = {}) {
     topologyRequests: () => topologyRequests,
   };
 }
+
+test("Air lifts without gripping, follows a sweep smoothly, and stops supplying air at release", () => {
+  const f = fixture();
+  const writes = [];
+  f.engine.body.setAirJets = (jets) => writes.push(plain(jets));
+  f.engine.planeHit = (x, y) => [x / 1000, y / 1000, -0.02];
+  f.engine.setTool("air");
+  f.point("down", 0, 0);
+  f.engine.stepAir(1 / 120);
+  assert.equal(f.picks.length, 0, "air can pass over holes without waiting for a pick");
+  assert.equal(f.attachments(), 0, "air never fastens a yarn to the pointer");
+  assert.ok(writes.at(-1)[0].strength > 0 && writes.at(-1)[0].strength < 0.2, "the fan starts gently");
+  f.point("move", 100, 0);
+  f.engine.stepAir(1 / 120);
+  assert.ok(writes.at(-1)[0].position[0] > 0 && writes.at(-1)[0].position[0] < 0.1);
+  f.point("up", 100, 0);
+  assert.equal(f.engine.airJets.size, 0);
+  assert.deepEqual(writes.at(-1), [], "the GPU source stops before another substep");
+  f.engine.stepAir(1 / 120);
+  assert.deepEqual(writes.at(-1), [], "released air cannot restart itself");
+});
+
+test("Air supports four independent fingers and cancellation removes only the released source", () => {
+  const f = fixture();
+  f.engine.planeHit = (x, y) => [x / 1000, y / 1000, -0.02];
+  f.engine.setTool("air");
+  for (let id = 1; id <= 5; id++) f.point("down", id, 0, 1000, id);
+  assert.equal(f.engine.airJets.size, 4);
+  f.point("cancel", 0, 0, 1001, 2);
+  assert.deepEqual(Array.from(f.engine.airJets.keys()), [1, 3, 4]);
+  f.point("move", 100, 0, 1002, 2);
+  assert.equal(f.engine.airJets.size, 3, "a cancelled finger cannot resurrect a fan");
+  f.point("cancel", 0, 0, 1003, -1);
+  assert.equal(f.engine.airJets.size, 0);
+});
+
+test("tool changes, framing, backgrounding and camera changes stop Air while keeping pins", () => {
+  for (const action of [
+    (engine) => engine.setTool("hand"),
+    (engine) => engine.setPaused(true),
+    (engine) => engine.setVisible(false),
+    (engine) => engine.zoom(100),
+    (engine) => engine.orbit(0.1, 0),
+    (engine) => engine.releaseAll(true),
+  ]) {
+    const f = fixture();
+    let sources = null;
+    f.engine.body.setAirJets = (jets) => {
+      sources = jets;
+    };
+    f.engine.planeHit = () => [0, 0, -0.02];
+    f.engine.setTool("air");
+    f.point("down");
+    f.engine.stepAir(1 / 120);
+    f.engine.grips.set("pin1", { pinned: true });
+    action(f.engine);
+    assert.equal(f.engine.airJets.size, 0);
+    assert.equal(sources.length, 0);
+    assert.equal(f.engine.grips.has("pin1"), true);
+  }
+});
+
+test("Air strength and sweep response depend on physical time, including slow motion", () => {
+  const strengths = [];
+  for (const hz of [30, 60, 120]) {
+    const f = fixture();
+    f.engine.planeHit = (x) => [x / 1000, 0, -0.02];
+    f.engine.setTool("air");
+    f.point("down");
+    f.point("move", 100);
+    for (let step = 0; step < hz / 2; step++) f.engine.stepAir(1 / hz);
+    const jet = f.engine.airJets.get(1);
+    strengths.push(jet.strength);
+    assert.ok(Math.abs(jet.position[0] - 0.1) < 1e-6);
+    assert.ok(jet.strength > 0.999 && jet.strength <= 1);
+  }
+  assert.ok(Math.max(...strengths) - Math.min(...strengths) < 1e-12);
+});
 
 test("a quick hand release survives a pending pick and applies its endpoint before letting go", async () => {
   const f = fixture();
