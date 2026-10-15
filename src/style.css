@@ -2573,9 +2573,9 @@ body.framing .stage:active {
   }
 }
 
-/* Play chrome: the shared header (rubenv.net/play-chrome). Fray's panels,
-   dock and dialogs take the shared dark glass and face; the rust thread
-   colour stays as the accent. */
+/* Play chrome (rubenv.net/play-chrome, docs/features/play-standard.md).
+   Fray wears the shared bar, dock, hint, About and loading screen; its own
+   tokens point at the shared ones and the thread colour is the accent. */
 :root {
   --panel: var(--pc-panel-solid);
   --paper: var(--pc-ink);
@@ -2585,16 +2585,93 @@ body.framing .stage:active {
   --label: var(--pc-font);
   --sans: var(--pc-font);
   --display: var(--pc-font);
+  --thread: var(--pc-accent);
 }
-.pc-bar .collection-count { position: absolute; top: 3px; right: 2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 99px; background: var(--pc-accent); color: var(--pc-on-accent); font: 700 9px/15px var(--pc-font); text-align: center; }
+html, body { font-family: var(--pc-font); }
+
+/* Bar extras */
 .pc-bar .collection-toggle { position: relative; }
-.pc-bar .collection-count:empty, .pc-bar .collection-count[data-count="0"] { display: none; }
-.score { top: calc(var(--top) + 64px) !important; padding: 12px 14px; border-radius: 14px; background: var(--pc-panel); border: 1px solid var(--pc-line); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
-.fabric-picker { top: calc(var(--top) + 64px) !important; }
-.dock, .frame-bar, .fabric-picker .menu, .camera-controls, .experiment-active { background: var(--pc-panel) !important; border-color: var(--pc-line) !important; border-radius: 16px; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: var(--pc-shadow); }
-.status { top: calc(76px + env(safe-area-inset-top, 0px)); font-family: var(--pc-font); }
-body.pc-hidden .workbench, body.pc-hidden .camera-controls, body.pc-hidden .frame-toggle { opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+.pc-bar .collection-count { position: absolute; top: 3px; right: 2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 99px; background: var(--pc-accent); color: var(--pc-on-accent); font: 700 9px/15px var(--pc-font); text-align: center; }
+
+/* The workbench keeps its place at the bottom; the dock inside it is the shared dock. */
+.workbench { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 24px); }
+.workbench .dock.pc-dock { position: relative; left: auto; bottom: auto; transform: none; margin: 0 auto; gap: 2px; padding: 6px; border-radius: 16px; max-width: 100%; }
+.dock.pc-dock .tool-palette { display: flex; gap: 2px; }
+.dock.pc-dock .toolitem { height: auto; min-width: 0; flex-direction: row; gap: 7px; padding: 9px 13px 9px 10px; border: 0; border-radius: 10px; color: var(--pc-ink); font: 500 12.5px/1 var(--pc-font); }
+.dock.pc-dock .toolitem svg { width: 19px; height: 19px; }
+.dock.pc-dock .toolitem span { font: inherit; letter-spacing: 0; text-transform: none; }
+.dock.pc-dock .toolitem kbd, .dock.pc-dock .toolitem .tool-key { display: none; }
+.dock.pc-dock .toolitem:hover { background: var(--pc-hover); }
+.dock.pc-dock .toolitem[aria-pressed="true"] { background: var(--pc-accent); color: var(--pc-on-accent); font-weight: 600; }
+.dock.pc-dock .fabric-picker { display: contents; position: static; }
+.dock.pc-dock .fabric-picker .menu { position: static; display: flex; flex: none; width: auto; max-width: 180px; align-items: center; gap: 8px; height: auto; min-width: 0; padding: 7px 11px 7px 8px; border: 0 !important; border-radius: 10px; background: transparent !important; box-shadow: none; color: var(--pc-ink); }
+.dock.pc-dock .fabric-picker .menu:hover, .dock.pc-dock .fabric-picker .menu[aria-expanded="true"] { background: var(--pc-hover) !important; }
+.dock.pc-dock .fabric-picker .current-swatch { width: 22px; height: 22px; border-radius: 6px; }
+.dock.pc-dock .fabric-selection { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
+.dock.pc-dock .fabric-selection .control-label { font: 600 9.5px/1 var(--pc-font); letter-spacing: 0.1em; text-transform: uppercase; color: var(--pc-soft); }
+.dock.pc-dock .fabric-selection .current-fabric { font: 500 12.5px/1 var(--pc-font); }
+.dock.pc-dock .camera-controls { position: static; display: flex; gap: 0; margin: 0; padding: 0; border: 0 !important; background: transparent !important; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.dock.pc-dock .camera-control { width: auto; height: auto; padding: 9px; border: 0; border-radius: 10px; background: transparent; color: var(--pc-muted); }
+.dock.pc-dock .camera-control:hover { background: var(--pc-hover); color: var(--pc-ink); }
+.dock.pc-dock .camera-control svg { width: 18px; height: 18px; }
+.dock.pc-dock .frame-toggle { position: static; display: flex; align-items: center; gap: 7px; margin: 0; padding: 9px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--pc-ink); font: 500 12.5px/1 var(--pc-font); }
+.dock.pc-dock .frame-toggle kbd { display: none; }
+.dock.pc-dock .frame-toggle[aria-pressed="true"] { background: var(--pc-accent); color: var(--pc-on-accent); }
+.dock.pc-dock .dock-actions { gap: 2px; padding: 0; border: 0; }
+.dock.pc-dock .dock-actions > button, .dock.pc-dock .effects-control > .tool { display: flex; align-items: center; gap: 7px; height: auto; padding: 9px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--pc-ink); font: 500 12.5px/1 var(--pc-font); }
+.dock.pc-dock .dock-actions > button:hover, .dock.pc-dock .effects-control > .tool:hover, .dock.pc-dock .effects-control > .tool[aria-expanded="true"] { background: var(--pc-hover); }
+.dock.pc-dock .record[aria-pressed="true"] { background: var(--pc-accent); color: var(--pc-on-accent); }
+.dock.pc-dock .share-proxy { display: none !important; }
+
+/* Fabric and effects menus open above the dock */
+.experiences.pc-menu, .tools.pc-menu { position: fixed; top: auto; left: 50%; right: auto; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(320px, calc(100% - 24px)); max-height: calc(100dvh - 200px); padding: 8px; list-style: none; margin: 0; }
+.experiences.pc-menu .experience, .tools.pc-menu .experience { border-radius: 10px; color: var(--pc-ink); font-family: var(--pc-font); }
+.experiences.pc-menu .experience[aria-checked="true"], .tools.pc-menu .experience[aria-checked="true"] { background: var(--pc-accent); color: var(--pc-on-accent); }
+.experiences.pc-menu .experience[aria-checked="true"] small, .tools.pc-menu .experience[aria-checked="true"] small { color: inherit; opacity: 0.75; }
+
+/* The guide above the dock is the hint pill */
+.interaction-guide { display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 8px; margin-bottom: 10px; padding: 7px 14px; border-radius: 99px; background: var(--pc-panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); text-shadow: none; }
+.guide-title { font: 600 12.5px/1.35 var(--pc-font); letter-spacing: 0; }
+.guide-description { margin: 0; color: var(--pc-muted); font: 400 12.5px/1.35 var(--pc-font); }
+.camera-hint { display: none; }
+.effect-summary, .experiment-active { background: var(--pc-panel) !important; border-color: var(--pc-line) !important; color: var(--pc-ink); font-family: var(--pc-font); border-radius: 14px; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+
+/* Score and notices under the bar */
+.score { top: calc(76px + env(safe-area-inset-top, 0px)) !important; right: 12px !important; padding: 12px 14px; border-radius: 14px; background: var(--pc-panel); border: 1px solid var(--pc-line); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); font-family: var(--pc-font); }
+.score-n { font-family: var(--pc-font) !important; font-weight: 600; letter-spacing: -0.04em; }
+.status { top: calc(76px + env(safe-area-inset-top, 0px)); font-family: var(--pc-font); background: var(--pc-panel); border-color: var(--pc-line); }
+
+/* Frame mode, dialogs and sheets */
+.frame-bar { background: var(--pc-panel) !important; border-color: var(--pc-line) !important; border-radius: 16px; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: var(--pc-shadow); font-family: var(--pc-font); }
+.frame-view[aria-pressed="true"] { background: var(--pc-accent); color: var(--pc-on-accent); }
+.explore-card, .collection-card, .sheet-card { background: var(--pc-panel-solid) !important; border-color: var(--pc-line) !important; border-radius: 20px; font-family: var(--pc-font); }
+.explore-card h2, .collection-card h2, .sheet-card h2 { font-family: var(--pc-font) !important; font-weight: 500; letter-spacing: -0.03em; }
+.primary-button { background: var(--pc-accent) !important; color: var(--pc-on-accent) !important; border-radius: 10px; }
+
+/* Loading: the Play logo and one line on the scene's background */
+.loading-panel { display: grid; justify-items: center; gap: 12px; font-family: var(--pc-font); }
+.loading-panel .pc-logo { width: 40px; animation: pc-pulse 1.3s ease-in-out infinite; }
+.loading-panel .loading-title { margin: 0; font: 500 15px/1.3 var(--pc-font) !important; letter-spacing: 0; text-transform: none; color: var(--pc-ink); }
+.loading-panel .loading-percent { display: none; }
+.loading-panel .loading-detail { margin: 0; font: 400 12.5px/1.4 var(--pc-font) !important; color: var(--pc-muted); }
+.loader-fill, .loader-needle { background: var(--pc-accent) !important; }
+
+/* H hides everything around the fabric */
+body.pc-hidden .workbench, body.pc-hidden .experiences, body.pc-hidden .tools { opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+
 @media (max-width: 700px) {
-  .score, .fabric-picker { top: calc(var(--top) + 52px) !important; }
+  .workbench { width: calc(100% - 16px); max-width: none; }
+  .workbench .dock.pc-dock { width: 100%; justify-content: center; }
+  .dock.pc-dock .tool-palette { flex: 1 1 100%; justify-content: space-between; }
+  .dock.pc-dock .toolitem { flex: 1; justify-content: center; padding: 11px 0; }
+  .dock.pc-dock .fabric-picker .menu { padding: 9px; }
+  .dock.pc-dock .fabric-picker .current-swatch { display: block !important; }
+  .dock.pc-dock .toolitem span, .dock.pc-dock .fabric-selection, .dock.pc-dock .frame-toggle span, .dock.pc-dock .dock-actions span { display: none; }
+  .dock.pc-dock > .pc-sep { display: none; }
+  .dock.pc-dock .frame-toggle, .dock.pc-dock .dock-actions, .dock.pc-dock .camera-controls { flex: none; width: auto; min-width: 0; margin: 0; }
+  .dock.pc-dock .frame-toggle, .dock.pc-dock .dock-actions > button, .dock.pc-dock .effects-control > .tool { padding: 9px; }
+  .dock.pc-dock .camera-control[data-camera="left"], .dock.pc-dock .camera-control[data-camera="right"] { display: none; }
+  .experiences.pc-menu, .tools.pc-menu { bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
+  .score { top: calc(64px + env(safe-area-inset-top, 0px)) !important; right: 8px !important; padding: 8px 10px; }
+  .interaction-guide { font-size: 12px; }
 }
-.toolitem[aria-pressed="true"] { background: var(--pc-accent) !important; color: var(--pc-on-accent) !important; }

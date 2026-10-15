@@ -46,11 +46,12 @@ Drag across the fabric to pull and tear it. Scroll to zoom. Hit **Reset** for a 
 - **Record** (dock button or `V`): records a clip of up to 20 seconds, with the tearing sound, as an
   MP4 (H.264 + AAC, the format X accepts), then offers it in the sheet to save, share natively on
   phones, or post (X's web intent can't attach a file, so you save and add it to the post).
-- **Save / share** (toolbar button or `S`): grabs the frame, composes a 1200x675 card with your score, time,
+- **Save / share** (Save a picture in the Play bar, or `S`): grabs the frame, composes a 1200x675 card with your score, time,
   fabric and verdict, and offers Post on X (pre-written text), the native share sheet with the image
   on phones, or saving the PNG. `R` resets, `Esc` closes.
-- **Sound** (speaker button or `M`): mute or unmute; the preference is remembered on this browser.
-- **How to play** (header button or `?`): tool guidance, camera controls, and keyboard shortcuts.
+- **Sound** (speaker button in the Play bar, or `M`): starts off; turning it on is remembered on this browser.
+- **About** (the Play bar's info button, or `?`): tool guidance, camera controls, and keyboard shortcuts. `H` hides the interface.
+- The interface is the shared Play standard (rubenv.net `play-chrome/`, `docs/features/play-standard.md`): `src/play-chrome-mount.js` adds the bar and About and moves the menus; `index.html` puts the fabric, view and Frame controls in the dock.
   Menus support arrow keys and Home/End; Escape closes menus and dialogs.
 - The Fabric menu also includes the "Smilie" experience. Changing fabric starts a fresh sheet;
   finish an active recording before switching.
@@ -82,7 +83,7 @@ installed `playwright` package, or set `PLAYWRIGHT_MODULE` to an existing Playwr
 ## Project layout
 
 ```
-index.html                 page shell: material picker, tool palette, effects, score, help, loader, recovery and share dialogs
+index.html                 page shell: material picker, tool palette, effects, score, loader, recovery and share dialogs
 src/style.css              responsive interface styling (Anton/Oswald type, material swatches, stitched loader and toolbar)
 src/main.js                main thread: canvas + OffscreenCanvas handoff, pointer/wheel/visibility plumbing,
                            AudioContext + tear-sound engine (TearAudio), interface state, accessible menus and dialogs

@@ -1086,16 +1086,12 @@ function shortcut(e) {
     e.ctrlKey ||
     e.altKey ||
     (e.repeat && !e.key.startsWith(`Arrow`)) ||
-    e.target.closest?.(`input, textarea, select, [contenteditable="true"]`)
+    e.target.closest?.(`input, textarea, select, [contenteditable="true"], dialog`)
   )
     return;
   let t = e.key.toLowerCase();
   if (t === `m` && !activeDialog) {
     soundToggle.click();
-    return;
-  }
-  if (t === `?`) {
-    document.querySelector(`.help-toggle`).click();
     return;
   }
   if (activeDialog || !engineReady || N() || toolsOpen()) return;
@@ -1527,13 +1523,7 @@ document.querySelector(`.fabric-close`)?.addEventListener(`click`, () => {
   v.focus();
 });
 
-const helpSheet = document.querySelector(`.help-sheet`);
-const helpToggle = document.querySelector(`.help-toggle`);
-helpToggle.addEventListener(`click`, () => showDialog(helpSheet, helpToggle, helpSheet.querySelector(`.help-close`)));
-helpSheet.querySelector(`.help-close`).addEventListener(`click`, () => closeDialog());
-helpSheet.addEventListener(`pointerdown`, (event) => {
-  if (event.target === helpSheet) closeDialog();
-});
+// How to play is the shared About dialog (play-chrome-mount.js); the kit opens it from the bar and with ?.
 document.addEventListener(
   `keydown`,
   (event) => {
