@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import * as mounts from "../src/mount.js";
 import { targetSpeed } from "../src/hand.js";
 
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
@@ -44,6 +45,7 @@ function fixture({ projected = false } = {}) {
     attachments = 0,
     topologyRequests = 0;
   const context = vm.createContext({
+    ...mounts,
     targetSpeed,
     X: (message) => messages.push(plain(message)),
     k: projected ? cameraMath.k : { target: [0, 0, 0], distance: 0.98, pitch: 0.16, yaw: 0 },
@@ -908,6 +910,9 @@ function clawFixture() {
     this.count = capsules.length;
     this.hasPrev = true;
   };
+  f.engine.interaction.pickAt = (_view, x, y) => ({
+    then: (resolve) => resolve({ node: 1, position: [Math.round(x * 1e8) / 1e11, Math.round(y * 1e8) / 1e11, 0] }),
+  });
   f.engine.setTool("claw");
   return { ...f, poses };
 }
@@ -958,7 +963,7 @@ test("canceled and expired released claws cannot leave delayed contacts", () => 
     if (reason === "cancel") f.point("cancel");
     else {
       f.point("up", 100, 0, 1020);
-      f.setNow(1141);
+      f.setNow(1500);
     }
     f.engine.stepProps(1 / 120);
     assert.equal(f.engine.claws.size, 0);
@@ -1160,10 +1165,11 @@ function probeFixture() {
   return {
     ...f,
     maps,
-    async complete(index, ruptures, pulledOut, speed = 0.01) {
-      buffer = new ArrayBuffer(16);
+    async complete(index, ruptures, pulledOut, speed = 0.01, force = 0) {
+      buffer = new ArrayBuffer(208);
       new Uint32Array(buffer).set([ruptures, pulledOut]);
       new Float32Array(buffer)[2] = speed;
+      new Float32Array(buffer)[7] = force;
       maps[index].resolve();
       await flush();
     },
@@ -1210,4 +1216,124 @@ test("reset invalidates an in-flight damage probe and starts fresh counter delta
     f.messages.filter(({ type }) => type === "tear"),
     [{ type: "tear", ruptures: 2, pulledOut: 1 }],
   );
+});
+
+test("hanging Air, Fist and Claw act through the fabric plane", () => {
+  const f = fixture();
+  f.engine.mount = "hanging";
+  delete f.engine.stepProps;
+  f.engine.ray = () => ({ origin: [0, -1, -0.2], dir: [0, 1, 0] });
+  f.engine.setTool("air");
+  f.point("down");
+  f.engine.stepAir(1 / 120);
+  const jet = f.engine.airJets.get(1);
+  assert.ok(Math.abs(jet.position[1] - 0.02) < 1e-12);
+  assert.equal(jet.position[2], -0.2);
+  assert.equal(jet.aim[3], 1);
+  let capsules;
+  f.engine.body.setPose = (value) => {
+    capsules = value;
+  };
+  f.engine.interaction.pickAt = () => ({ then: (resolve) => resolve({ node: 1, position: [0, -0.08, -0.2] }) });
+  f.engine.setTool("fist");
+  f.point("down");
+  f.engine.stepProps(1 / 120);
+  assert.ok(capsules[0].a[1] < 0);
+  assert.equal(capsules[0].a[2], -0.2);
+  assert.ok(capsules[0].a[1] < -0.08, "punch starts in front of the actual billowed surface");
+  f.engine.fists = [];
+  f.engine.setTool("claw");
+  f.point("down");
+  f.engine.stepProps(1 / 120);
+  assert.equal(capsules.length, 3);
+  assert.ok(capsules.every((c) => c.a[1] < c.b[1]));
+  assert.ok(capsules.every((c) => Math.abs(c.b[2] + 0.2) < 0.01));
+});
+
+test("grip load belongs to the measured gesture and reset discards an in-flight load", async () => {
+  const f = probeFixture();
+  f.engine.interaction.gripGoal = {};
+  f.engine.grips.set(1, { slot: 0, pinned: false });
+  f.engine.probeRest(2);
+  await f.complete(0, 0, 0, 0.01, 12);
+  assert.deepEqual(
+    f.messages.filter((m) => m.type === "tension"),
+    [{ type: "tension", force: 12 }],
+  );
+  f.engine.probeRest(2);
+  f.engine.grips.set(1, { slot: 0, pinned: false });
+  await f.complete(1, 0, 0, 0.01, 99);
+  assert.equal(
+    f.messages.filter((m) => m.type === "tension").at(-1).force,
+    0,
+    "a reused slot cannot inherit the released hand's load",
+  );
+  const count = f.messages.length;
+  f.engine.probeRest(2);
+  f.engine.releaseEpoch++;
+  await f.complete(2, 0, 0, 0.01, 20);
+  assert.equal(f.messages.length, count);
+});
+test("Fist uses the visible folded surface and misses or cancelled picks never punch", async () => {
+  const f = fixture();
+  f.engine.setTool("fist");
+  f.point("down");
+  assert.equal(f.engine.fists.length, 0);
+  f.picks[0].resolve({ node: 1, position: [0.1, 0.2, 0.08] });
+  await flush();
+  assert.deepEqual(plain(f.engine.fists[0].p), [0.1, 0.2, 0.08]);
+  for (const action of [
+    (e) => e.setTool("hand"),
+    (e) => e.orbit(0.1, 0),
+    (e) => e.setPaused(true),
+    (e) => e.releaseAll(),
+  ]) {
+    const g = fixture();
+    g.engine.setTool("fist");
+    g.point("down");
+    action(g.engine);
+    g.hit(0);
+    await flush();
+    assert.equal(g.engine.fists.length, 0);
+  }
+  f.point("down", 50, 50);
+  f.picks[1].resolve(null);
+  await flush();
+  assert.equal(f.engine.fists.length, 1);
+});
+test("Claw follows picked fold depth, breaks contact across holes and ignores a cancelled readback", async () => {
+  const f = fixture();
+  f.engine.setTool("claw");
+  f.point("down");
+  assert.equal(f.engine.claws.get(1).tip, null);
+  f.picks[0].resolve({ node: 1, position: [0.1, 0.2, 0.07] });
+  await flush();
+  assert.ok(Math.abs(f.engine.claws.get(1).tip[2] - 0.064) < 1e-12);
+  f.point("move", 40, 40);
+  f.picks[1].resolve(null);
+  await flush();
+  assert.equal(f.engine.claws.get(1).tip, null);
+  f.point("move", 60, 60);
+  f.point("cancel");
+  f.picks[2].resolve({ node: 2, position: [0.2, 0.3, 0.1] });
+  await flush();
+  assert.equal(f.engine.claws.size, 0);
+});
+
+test("hanging framing adapts to orientation while preserving user zoom and ignoring render scale", () => {
+  const f = fixture();
+  f.engine.mount = "hanging";
+  f.engine.cssWidth = 390;
+  f.engine.cssHeight = 780;
+  const base = { target: [0, 0, -0.01], fovY: 0.35 };
+  f.engine.camera = mounts.mountCamera("hanging", "reset", 0.5, base, 780);
+  f.engine.camera.distance = 0.9;
+  f.engine.setSize(844, 390, 844, 390);
+  const expected = mounts.mountCamera("hanging", "reset", 844 / 390, base, 390);
+  assert.ok(Math.abs(f.engine.camera.fovY - expected.fovY) < 1e-12);
+  assert.equal(f.engine.camera.distance, 0.9);
+  assert.ok(Math.abs(f.engine.camera.target[2] - expected.target[2]) < 1e-12);
+  const fov = f.engine.camera.fovY;
+  f.engine.setSize(1688, 780, 844, 390);
+  assert.equal(f.engine.camera.fovY, fov);
 });

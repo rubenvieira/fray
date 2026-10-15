@@ -2,6 +2,8 @@ import "./play-chrome-mount.js";
 import { ArrayBufferTarget, Muxer } from "mp4-muxer";
 import { bindStageGestures } from "./gestures.js";
 import { createCollection } from "./collection.js";
+import { MOUNTS, normalizeMount } from "./mount.js";
+import { createGripFeedback } from "./grip-feedback.js";
 import { createTearFeedback } from "./tear-feedback.js";
 import { createRenderBudget, scaleRenderSize } from "./render-budget.js";
 import { prepareRecordedTearSource } from "./audio-preparation.js";
@@ -278,6 +280,7 @@ var S = null,
   C = (e, t = []) => S?.postMessage(e, t),
   w = new u((e) => C({ type: `audio`, port: e }, [e])),
   fabric = `tartan`,
+  mount = normalizeMount(new URLSearchParams(location.search).get(`mount`) ?? `hanging`),
   // dev: ?settle=N shortens the settle of a fabric without a drape file
   settleSteps = Number(new URLSearchParams(location.search).get(`settle`)) || 0;
 let engineReady = false;
@@ -292,6 +295,7 @@ let stageGestures = null;
 let gallery = null;
 let activeExperiment = null;
 let pendingExperiment = null;
+let pendingSpecial = null;
 let selectedView = null;
 const coarsePointer = matchMedia(`(pointer: coarse)`);
 const renderBudget = createRenderBudget();
@@ -299,6 +303,7 @@ const EXPERIMENTS = {
   ribbons: {
     name: `Ribbons in motion`,
     fabric: `satin`,
+    mount: `frame`,
     tool: `blade`,
     wind: 1,
     slow: true,
@@ -307,6 +312,7 @@ const EXPERIMENTS = {
   storm: {
     name: `Storm study`,
     fabric: `gauze`,
+    mount: `hanging`,
     tool: `claw`,
     wind: 2,
     slow: false,
@@ -315,6 +321,7 @@ const EXPERIMENTS = {
   gold: {
     name: `Golden hour`,
     fabric: `lame`,
+    mount: `hanging`,
     tool: `hand`,
     wind: 1,
     slow: true,
@@ -443,7 +450,7 @@ function startExperiment(id) {
   printClear.parentElement.hidden = true;
   pendingExperiment = experiment;
   // This always creates a fresh sheet, even when the chosen material is current.
-  startWorker(experiment.fabric);
+  startWorker(experiment.fabric, experiment.mount);
 }
 function finishExperiment() {
   const experiment = pendingExperiment;
@@ -515,6 +522,16 @@ const tearFeedback = createTearFeedback({
     !document.body.classList.contains(`staged`),
   vibrate: (duration) => navigator.vibrate?.(duration) ?? false,
 });
+const gripFeedback = createGripFeedback({
+  now: () => performance.now(),
+  render: ({ active, level, tearing, label }) => {
+    const guide = document.querySelector(`.interaction-guide`);
+    guide.classList.toggle(`grip-active`, active);
+    guide.classList.toggle(`grip-tearing`, tearing);
+    guide.style.setProperty(`--grip-load`, String(level));
+    if (currentTool === `hand`) guide.querySelector(`.guide-title`).textContent = label ?? TOOL_GUIDES.hand[0];
+  },
+});
 let canvasAudioAbort;
 const airPointers = new Set();
 function updateAirHint() {
@@ -530,6 +547,7 @@ function j(e, t) {
     if (e === `up` || e === `cancel`) airPointers.delete(t.pointerId);
     updateAirHint();
   }
+  if (currentTool === `hand`) gripFeedback.pointer(e, t);
   tearFeedback.pointer(e, t);
   C({
     type: `pointer`,
@@ -547,6 +565,7 @@ function j(e, t) {
 function cancelStagePointer(time) {
   airPointers.clear();
   updateAirHint();
+  gripFeedback.reset();
   tearFeedback.reset();
   C({ type: `pointer`, phase: `cancel`, id: -1, preservePins: true, seq: k++, time: A(time), x: 0, y: 0 });
 }
@@ -600,8 +619,29 @@ function P(e) {
   }));
 for (let e of b)
   e.addEventListener(`click`, () => {
-    (w.unlock(), w.prefetchStaged(), C({ type: `experience`, name: e.dataset.experience }), P(!1));
+    if (rec) {
+      toast(`Finish your recording before starting Smilie.`);
+      return;
+    }
+    w.unlock();
+    w.prefetchStaged();
+    P(!1);
+    if (mount === `hanging`) {
+      pendingSpecial = e.dataset.experience;
+      startWorker(fabric, `frame`);
+    } else C({ type: `experience`, name: e.dataset.experience });
     v.focus();
+  });
+for (const button of document.querySelectorAll(`[data-mount]`))
+  button.addEventListener(`click`, () => {
+    if (!engineReady || button.dataset.mount === mount) return;
+    if (rec) {
+      toast(`Finish your recording before changing setup.`);
+      return;
+    }
+    w.unlock();
+    P(false);
+    startWorker(fabric, button.dataset.mount);
   });
 for (let e of fabricButtons)
   e.addEventListener(`click`, () => {
@@ -627,14 +667,19 @@ for (let e of fabricButtons)
   }));
 // ---------------------------------------------------------------- tools menu
 const TOOL_NAMES = { hand: `Hand`, blade: `Knife`, claw: `Claw`, fist: `Fist`, pin: `Pin`, air: `Air` };
+function toolGuide(tool) {
+  return tool === `air` && mount === `hanging`
+    ? [`Let it breathe.`, `Hold and sweep to billow the cloth. Release to let it settle.`]
+    : TOOL_GUIDES[tool];
+}
 function setTool(e) {
   if (!TOOL_NAMES[e]) return;
   M(performance.now());
   currentTool = e;
   for (let t of toolItems) t.setAttribute(`aria-pressed`, String(t.dataset.tool === e));
-  document.querySelector(`.guide-title`).textContent = TOOL_GUIDES[e][0];
-  document.querySelector(`.guide-description`).textContent = TOOL_GUIDES[e][1];
-  if (activeExperiment) document.querySelector(`.experiment-tip`).textContent = TOOL_GUIDES[e][1];
+  document.querySelector(`.guide-title`).textContent = toolGuide(e)[0];
+  document.querySelector(`.guide-description`).textContent = toolGuide(e)[1];
+  if (activeExperiment) document.querySelector(`.experiment-tip`).textContent = toolGuide(e)[1];
   C({ type: `tool`, tool: e });
 }
 function updateEffects() {
@@ -702,6 +747,8 @@ window.__fabricDev = (e) =>
 new Promise((e) => (I = e));
 function onWorkerMessage(e) {
   let t = e.data;
+  if (t.type === `tension`) gripFeedback.sample(t.force);
+  if (t.type === `tear`) gripFeedback.tear(t);
   if (t.type === `devDone`) (F.get(t.id)?.(t.result), F.delete(t.id));
   else if (t.type === `progress`) {
     const progress = Math.round(100 * Math.max(0, Math.min(1, t.value)));
@@ -731,6 +778,11 @@ function onWorkerMessage(e) {
         setWind(windLevel);
         setSlow(slowMotion);
         sendView({ type: `camera`, preset: `reset` });
+      }
+      if (pendingSpecial) {
+        const name = pendingSpecial;
+        pendingSpecial = null;
+        C({ type: `experience`, name });
       }
     }
     syncInteractivity();
@@ -775,7 +827,7 @@ function onWorkerError(e) {
 // The engine lives in a worker that owns the canvas. A fabric switch starts a new worker (the GPU
 // device and every buffer go with the old one) on a fresh canvas, since an OffscreenCanvas can be
 // transferred only once, and re-wires the tear-sound channel and the pointer tool to it.
-function startWorker(name) {
+function startWorker(name, setup = mount) {
   if (rec) {
     toast(`Stop your recording before changing fabric.`);
     return;
@@ -795,6 +847,7 @@ function startWorker(name) {
   focusAfterLoad = !!document.activeElement.closest(`.fabric-picker, .error-panel`);
   cancelCapture();
   M(performance.now());
+  mount = normalizeMount(setup);
   ((fabric = name), resetShred());
   if (S) {
     (abortRecording(), S.terminate(), w.cue({ kind: `stop` }));
@@ -806,10 +859,15 @@ function startWorker(name) {
   m.setAttribute(`role`, `img`);
   m.setAttribute(`aria-describedby`, `tool-instruction`);
   m.tabIndex = 0;
+  for (const button of document.querySelectorAll(`[data-mount]`))
+    button.setAttribute(`aria-checked`, String(button.dataset.mount === mount));
+  document.querySelector(`.setup-description`).textContent = MOUNTS[mount].description;
+  document.querySelector(`.current-setup`).textContent = MOUNTS[mount].label;
   document.querySelector(`.current-fabric`).textContent = FABRIC_NAMES[name];
   document.querySelector(`.current-swatch`).dataset.fabric = name;
-  v.setAttribute(`aria-label`, `Choose fabric. Current fabric: ${FABRIC_NAMES[name]}`);
-  document.querySelector(`.loading-detail`).textContent = `Preparing ${FABRIC_NAMES[name]} · woven thread by thread`;
+  v.setAttribute(`aria-label`, `Choose fabric and setup. ${FABRIC_NAMES[name]}, ${MOUNTS[mount].label}`);
+  document.querySelector(`.loading-detail`).textContent =
+    `Preparing ${MOUNTS[mount].label.toLowerCase()} ${FABRIC_NAMES[name]} · woven thread by thread`;
   document.querySelector(`.loading-percent`).textContent = `0%`;
   document.querySelector(`.error-panel`).hidden = true;
   document.body.classList.remove(`failed`);
@@ -828,7 +886,18 @@ function startWorker(name) {
       _.style.setProperty(`--p`, `0`));
     for (let e of fabricButtons) e.setAttribute(`aria-checked`, String(e.dataset.fabric === name));
     let e = m.transferControlToOffscreen();
-    (C({ type: `init`, canvas: e, fabric: name, settleSteps, base: import.meta.env.BASE_URL, ...T() }, [e]),
+    (C(
+      {
+        type: `init`,
+        canvas: e,
+        fabric: name,
+        mount,
+        settleSteps,
+        base: import.meta.env.BASE_URL,
+        ...T(),
+      },
+      [e],
+    ),
       w.reconnect());
   } catch (error) {
     onWorkerError(error);
