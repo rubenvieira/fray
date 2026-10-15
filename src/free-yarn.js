@@ -1,8 +1,23 @@
 // Detached yarns use the same bounded material cache as held tails. Their
 // reconstructed particles carry no forces back into the coarser cloth lattice.
 export const freeYarnWGSL = `
+// Constant-air drag and gravity without subtracting large terminal velocities.
+// The series keeps tiny drag steps and zero-time handoffs accurate in f32.
+fn freeFlight(v: vec3<f32>, air: vec3<f32>, drag: f32, dt: f32) -> array<vec3<f32>, 2> {
+  let x = drag * dt;
+  var first = dt * (1.0 - x * (0.5 - x * (1.0 / 6.0 - x * (1.0 / 24.0 - x / 120.0))));
+  var second = dt * dt * (0.5 - x * (1.0 / 6.0 - x * (1.0 / 24.0 - x * (1.0 / 120.0 - x / 720.0))));
+  if (x >= 0.05) {
+    first = (1.0 - exp(-x)) / drag;
+    second = (dt - first) / drag;
+  }
+  let acceleration = drag * (air - v) + vec3<f32>(0.0, 0.0, -GRAVITY);
+  return array<vec3<f32>, 2>(v * dt + acceleration * second, v + acceleration * first);
+}
+
 fn freeYarnSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, len: f32) {
-  let slot = tailSlot(tailIdentity(ri), u32(TF.params.w) + 1u);
+  let frame = u32(TF.params.w) + 1u;
+  let slot = tailSlot(tailIdentity(ri), frame);
   if (slot < 0) { atomicAdd(&tailCount[1], 1u); }
   let LR = R.layers[ri.layer];
   let profile = frayProfile(LR.refine.w);
@@ -23,24 +38,56 @@ fn freeYarnSolve(ri: RunInfo, q: vec3<f32>, dir0: vec3<f32>, root: u32, k: u32, 
   var old: array<vec3<f32>, TAIL_SEGS_1>;
   var point: array<vec3<f32>, TAIL_SEGS_1>;
   var velocity: array<vec3<f32>, TAIL_SEGS_1>;
+  var handedOff = false;
+  if (!remembered) {
+    let base = (ri.yarn << 5u) | (ri.layer << 2u) | (ri.fam << 1u);
+    for (var side = 0u; side < 2u; side++) {
+      let fromA = side == 1u;
+      let cut = bitcast<u32>(i32(select(ri.pos - 1.0, ri.pos + ri.n, fromA)));
+      let source = releasedTailSlot(vec2<u32>(base | side, cut), frame);
+      if (source < 0) { continue; }
+      let s = u32(source);
+      let prior = tailMemory[s].root;
+      let oldLength = tailMemory[s].shape.w;
+      let elapsed = TF.params.y - prior.w;
+      if (prior.w >= 0.0 && elapsed >= 0.0 && elapsed <= 0.12 && oldLength > 1e-7 && oldLength <= 1.02 * len) {
+        let growth = len - oldLength;
+        let exit = normalize(tailMemory[s].p[1].xyz - tailMemory[s].p[0].xyz + vec3<f32>(1e-12, 0.0, 0.0));
+        for (var i = 0u; i <= TAIL_SEGS; i++) {
+          // Free rods run B -> A. Reverse an A-held rod's samples without
+          // reversing its physical velocity. Any last released material is
+          // inserted behind the old root, keeping the cut end continuous.
+          let arc = select(f32(i) * h - growth, oldLength - f32(i) * h, fromA);
+          if (arc < 0.0) {
+            old[i] = tailMemory[s].p[0].xyz + exit * arc;
+            velocity[i] = tailMemory[s].v[0].xyz;
+          } else {
+            let u = clamp(arc * f32(TAIL_SEGS) / oldLength, 0.0, f32(TAIL_SEGS));
+            let j = min(u32(floor(u)), TAIL_SEGS - 1u);
+            old[i] = mix(tailMemory[s].p[j].xyz, tailMemory[s].p[j + 1u].xyz, u - f32(j));
+            velocity[i] = mix(tailMemory[s].v[j].xyz, tailMemory[s].v[j + 1u].xyz, u - f32(j));
+          }
+        }
+        dt = elapsed;
+        remembered = true;
+        handedOff = true;
+      }
+      unlockReleasedTail(s);
+      if (handedOff) { break; }
+    }
+  }
   for (var i = 0u; i <= TAIL_SEGS; i++) {
-    old[i] = q + dir0 * (f32(i) * h);
+    if (!handedOff) { old[i] = q + dir0 * (f32(i) * h); }
     var v = x[R.counts.x + root].xyz;
-    if (remembered) { old[i] = tailMemory[slot].p[i].xyz; v = tailMemory[slot].v[i].xyz; }
+    if (handedOff) { v = velocity[i]; }
+    else if (remembered) { old[i] = tailMemory[slot].p[i].xyz; v = tailMemory[slot].v[i].xyz; }
     var position = old[i];
-    if (remembered) {
+    if (remembered && dt > 0.0) {
       let air = airflowAt(position);
       let drag = 1.225 * profile.fibre.w * radius * length(air - v) / max(mass, 1e-12);
-      // Exact constant-air drag/gravity step; stable even in a strong fan.
-      if (drag > 1e-5) {
-        let terminal = air + vec3<f32>(0.0, 0.0, -GRAVITY) / drag;
-        let decay = exp(-drag * dt);
-        position += terminal * dt + (v - terminal) * ((1.0 - decay) / drag);
-        v = terminal + (v - terminal) * decay;
-      } else {
-        position += v * dt + vec3<f32>(0.0, 0.0, -0.5 * GRAVITY * dt * dt);
-        v += vec3<f32>(0.0, 0.0, -GRAVITY * dt);
-      }
+      let flight = freeFlight(v, air, drag, dt);
+      position += flight[0];
+      v = flight[1];
     }
     if (remembered && R.floor.y > 0.5 && old[i].z <= R.floor.x + radius + 1e-6) {
       let speed = length(v.xy);

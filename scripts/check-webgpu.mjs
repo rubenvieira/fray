@@ -321,6 +321,8 @@ try {
   const responseCode =
     tailPrefix +
     tailMemoryWGSL +
+    `\nconst GRAVITY: f32 = 9.81;\n` +
+    shaderFunction(freeYarnWGSL, "freeFlight") +
     `
 @group(0) @binding(0) var<storage, read_write> result: array<vec4<f32>>;
 @compute @workgroup_size(64)
@@ -345,6 +347,10 @@ fn check(@builtin(global_invocation_id) gid: vec3<u32>) {
   let severed = severedEdgeEnd(here, there, hasNext);
   result[16u + i] = vec4<f32>(select(0.0, 1.0, severed), f32(i), 0.0, 0.0);
   result[i] = vec4<f32>(ratio, length(full[0] - split[0]), length(full[1] - split[1]), arc / rest);
+  let drag = array<f32, 12>(0.0, 1e-6, 0.01, 1.0, 10.0, 100.0, 1000.0, 0.0006, 5.0, 0.05, 3.0, 60.0)[i];
+  let flight = freeFlight(vec3<f32>(0.03, 0.08, -0.000047), vec3<f32>(0.2, 0.0, 0.1), drag, select(dt, 0.0, i == 7u));
+  result[32u + i] = vec4<f32>(flight[0], 0.0);
+  result[48u + i] = vec4<f32>(flight[1], 0.0);
 }`;
   const tails = await page.evaluate(checkTails, { code: tail, responseCode, memoryBytes: TAIL_HISTORY_BYTES });
   console.log("Free-tail checks passed: " + JSON.stringify(tails));
