@@ -13805,7 +13805,7 @@ function pn(e) {
   };
 }
 async function mn(e) {
-  let t = await fetch(new URL(`${import.meta.env.BASE_URL}models/smilie.glb`, e));
+  let t = await fetch(new URL(`${ASSET_BASE}models/smilie.glb`, e));
   if (!t.ok) throw Error(`creature model unavailable (${t.status})`);
   let n = pn(await t.arrayBuffer()),
     r = (e) => {
@@ -13819,7 +13819,7 @@ async function mn(e) {
   return { model: n, images: { base: i, normal: a, orm: o } };
 }
 async function hn(e) {
-  let t = await fetch(new URL(`${import.meta.env.BASE_URL}stage/smilie.clip`, e));
+  let t = await fetch(new URL(`${ASSET_BASE}stage/smilie.clip`, e));
   if (!t.ok) throw Error(`experience clip unavailable (${t.status})`);
   return new dn(await t.arrayBuffer());
 }
@@ -14912,12 +14912,15 @@ var Fn = class {
     );
   }
 };
+// The app's base path (Vite's BASE_URL), sent by the page with `init`; assets resolve under it. Kept out
+// of import.meta so the worker source also runs as a plain script (the interaction tests load it so).
+var ASSET_BASE = `/`;
 const In = self,
   X = (e) => In.postMessage(e),
   Z = (e) => X({ type: `progress`, value: e });
 async function Ln() {
   let e = (e) =>
-    fetch(new URL(`${import.meta.env.BASE_URL}texture/${e}`, self.location.href))
+    fetch(new URL(`${ASSET_BASE}texture/${e}`, self.location.href))
       .then((t) => (t.ok ? t.blob() : Promise.reject(Error(e))))
       .then((e) => createImageBitmap(e, { colorSpaceConversion: `none`, premultiplyAlpha: `none` }));
   try {
@@ -15146,7 +15149,12 @@ const Q = Dt.h,
     async init(t, r, i, a, o) {
       ((this.canvas = t), X({ type: `status`, state: `loading` }));
       // the settled rest state of this fabric (see dev op `drape`; a stale or missing file just settles here)
-      let s = fetch(new URL(this.fabric === `denim` ? `${import.meta.env.BASE_URL}drape.bin` : `${import.meta.env.BASE_URL}drape-${this.fabric}.bin`, self.location.href))
+      let s = fetch(
+          new URL(
+            this.fabric === `denim` ? `${ASSET_BASE}drape.bin` : `${ASSET_BASE}drape-${this.fabric}.bin`,
+            self.location.href,
+          ),
+        )
           .then((e) => (e.ok ? e.arrayBuffer() : null))
           .catch(() => null),
         c = Ln(),
@@ -15218,7 +15226,7 @@ const Q = Dt.h,
     }
     // The denim's drape (public/drape.bin), for warm-starting another fabric
     denimDrape() {
-      return fetch(new URL(`${import.meta.env.BASE_URL}drape.bin`, self.location.href))
+      return fetch(new URL(`${ASSET_BASE}drape.bin`, self.location.href))
         .then((e) => (e.ok ? e.arrayBuffer() : null))
         .catch(() => null);
     }
@@ -16304,7 +16312,8 @@ In.onmessage = (t) => {
   let n = t.data;
   switch (n.type) {
     case `init`:
-      (($.fabric = n.fabric ?? `tartan`),
+      ((ASSET_BASE = typeof n.base == `string` && n.base ? n.base : `/`),
+      ($.fabric = n.fabric ?? `tartan`),
       ($.settleSteps = n.settleSteps > 0 ? n.settleSteps : 420),
       $.init(n.canvas, n.width, n.height, n.cssWidth, n.cssHeight)).catch((t) => {
         (console.error(t),

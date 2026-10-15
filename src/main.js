@@ -812,7 +812,8 @@ function startWorker(name) {
       _.style.setProperty(`--p`, `0`));
     for (let e of fabricButtons) e.setAttribute(`aria-checked`, String(e.dataset.fabric === name));
     let e = m.transferControlToOffscreen();
-    (C({ type: `init`, canvas: e, fabric: name, settleSteps, ...T() }, [e]), w.reconnect());
+    (C({ type: `init`, canvas: e, fabric: name, settleSteps, base: import.meta.env.BASE_URL, ...T() }, [e]),
+      w.reconnect());
   } catch (error) {
     onWorkerError(error);
   }
