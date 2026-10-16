@@ -27,6 +27,8 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
     make(memoryBytes),
     make(160, true),
     make(512, true),
+    make(48, true),
+    make(64, true),
   ];
   async function pipeline(label, code, entryPoint) {
     const m = device.createShaderModule({ code, label });
@@ -360,6 +362,61 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
         );
       }
     }
+    // The selected material end stays in the tweezers as its root retreats,
+    // and remains held after its final crossing releases. Other yarns keep
+    // their own cache records, including a real hash-bucket collision.
+    const handle = new ArrayBuffer(48),
+      hu = new Uint32Array(handle),
+      hf = new Float32Array(handle);
+    function hold(root, length, cut = 70, direction = -1) {
+      hu.set([0, 0, 10, cut]);
+      hf.set([0.015, 0.01, 0.025, 1, 39, length, direction, 1 / 30], 4);
+      device.queue.writeBuffer(buffers[13], 0, handle);
+      device.queue.writeBuffer(
+        buffers[14],
+        0,
+        new Float32Array([39, 0, 0, 1, ...root, length, 0, 0, 0, 0, 0, 0, 0, 0]),
+      );
+    }
+    rf.set([-0.12, 0, 0, 0], 112);
+    Object.assign(rods[0], { pos: 40, n: 30, len: 0.0305, q: [0, 0, 0.03], heldB: false, detached: false });
+    hold(rods[0].q, rods[0].len);
+    const caught = await step();
+    const goal = [0.015, 0.01, 0.025];
+    assert(
+      Math.hypot(...goal.map((v, k) => caught[10][64 + k] - v)) < 2e-4,
+      "a gripped end reaches the hand without stretching its segments",
+    );
+    Object.assign(rods[0], { pos: 35, n: 35, len: 0.0355, q: [-0.005, 0, 0.03] });
+    hold(rods[0].q, rods[0].len);
+    const more = await step({ reverse: true });
+    assert(
+      Math.hypot(...goal.map((v, k) => more[10][64 + k] - v)) < 2e-4,
+      "retreating crossings add material at the root without changing the held cut end",
+    );
+    rods[0].detached = true;
+    const extracted = await step();
+    assert(
+      Math.hypot(...goal.map((v, k) => extracted[10][k] - v)) < 2e-4,
+      "the same B cut end remains held when the final crossing releases",
+    );
+    hf[7] = 0;
+    device.queue.writeBuffer(buffers[13], 0, handle);
+    const letGo = await step();
+    assert(Math.hypot(...goal.map((v, k) => letGo[10][k] - v)) > 1e-7, "letting go restores free flight");
+    Object.assign(rods[0], { pos: 40, n: 30, len: 0.0305, q: [0, 0, 0.03], heldB: true, detached: false });
+    hold(rods[0].q, rods[0].len, 39, 1);
+    const otherSide = await step();
+    assert(
+      Math.hypot(...goal.map((v, k) => otherSide[10][64 + k] - v)) < 2e-4,
+      "a yarn held from the other side reaches the hand too",
+    );
+    rods[0].detached = true;
+    const otherFree = await step();
+    assert(
+      Math.hypot(...goal.map((v, k) => otherFree[10][64 + k] - v)) < 2e-4,
+      "the A cut end remains selected on release from the other side",
+    );
     output.destroy();
     assert(errors.length === 0, errors.join("\n"));
     return {
@@ -369,6 +426,7 @@ export async function checkTails({ code, responseCode, coloursCode, memoryBytes 
       rods: 2,
       releaseHandoffs: 4,
       freeFlightCases: 12,
+      grippedEndCases: 6,
       errors,
       calmTip: calm[10].slice(64, 67),
       airTip: blown[10].slice(64, 67),

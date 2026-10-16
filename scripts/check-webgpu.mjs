@@ -1,3 +1,4 @@
+import { yarnHandleRenderWGSL, yarnGripWGSL, yarnPickWGSL } from "../src/yarn-grip.js";
 import { additionalPresets, reinforcementStrength, materialColourWGSL } from "../src/material-library.js";
 import { freeYarnWGSL } from "../src/free-yarn.js";
 import { checkTails } from "./tail-checks.mjs";
@@ -14,11 +15,13 @@ import vm from "node:vm";
 import { checkGripFeedback } from "./grip-feedback-checks.mjs";
 import { checkAirflow } from "./airflow-checks.mjs";
 import { checkBurn } from "./burn-checks.mjs";
+import { checkYarnGrip } from "./yarn-grip-checks.mjs";
 import { checkRelease } from "./release-checks.mjs";
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
 const context = vm.createContext({
+  yarnHandleRenderWGSL,
   additionalPresets,
   reinforcementStrength,
   materialColourWGSL,
@@ -39,11 +42,27 @@ const context = vm.createContext({
 });
 // Evaluating declarations creates no GPU device or scene; init is message-driven.
 vm.runInContext(source.replace(/^import .*;\n/gm, ""), context);
-const { common, field, grip, surface, thread, appearance, materials, drag, body, mount, floor, fringe, tail, prep } =
-  vm.runInContext(
-    `({
+const {
+  common,
+  field,
+  grip,
+  surface,
+  scan,
+  thread,
+  appearance,
+  materials,
+  drag,
+  body,
+  mount,
+  floor,
+  fringe,
+  tail,
+  prep,
+} = vm.runInContext(
+  `({
   common: _, field: ot, grip: R, appearance: oe, drag: Ct, body: nn,
   surface: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + le + ce,
+  scan: Pe({layers:[{bundle:[5,5]}]}, false) + oe + de,
   thread: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + fe + he,
   fringe: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + ge,
   tail: Pe({layers:[{bundle:[5,5]}]}, false) + oe + me,
@@ -52,8 +71,8 @@ const { common, field, grip, surface, thread, appearance, materials, drag, body,
   floor: Pe({layers:[{bundle:[5,5]}]}, false) + oe + j + Se,
   materials: Object.values(FABRICS).map(preset => preset.material)
 })`,
-    context,
-  );
+  context,
+);
 
 function shaderFunction(code, name) {
   const start = code.indexOf(`fn ${name}(`);
@@ -251,7 +270,10 @@ try {
         modules: {
           "yarn field": common + field,
           grip: common + grip,
+          "individual yarn load": common + releaseWGSL + yarnGripWGSL,
+          "loose end picker": yarnPickWGSL,
           surface: surface,
+          "yarn run scan": scan,
           "loose threads": thread,
           mount,
           floor,
@@ -322,7 +344,7 @@ try {
     }
   }
   console.log(
-    `GPU checks passed: 12 production modules compiled, ${cases.length} force cases, ${fibreCases.length} loose-fibre and ${fibreCases.length} fringe colours.`,
+    `GPU checks passed: 15 production modules compiled, ${cases.length} force cases, ${fibreCases.length} loose-fibre and ${fibreCases.length} fringe colours.`,
   );
   console.log(`Adapter: ${result.description}. Correctness only; no real-phone performance claim.`);
   const feedback = await page.evaluate(checkGripFeedback, common + grip);
@@ -364,6 +386,11 @@ fn check(@builtin(global_invocation_id) gid: vec3<u32>) {
 }`;
   const tails = await page.evaluate(checkTails, { code: tail, responseCode, memoryBytes: TAIL_HISTORY_BYTES });
   console.log("Free-tail checks passed: " + JSON.stringify(tails));
+  const yarnGrip = await page.evaluate(checkYarnGrip, {
+    code: common + releaseWGSL + yarnGripWGSL,
+    pickCode: yarnPickWGSL,
+  });
+  console.log("Individual yarn checks passed: " + JSON.stringify(yarnGrip));
   const release = await page.evaluate(checkRelease, { code: common + field });
   console.log("Progressive yarn release checks passed: " + JSON.stringify(release));
   const combustion = await page.evaluate(checkBurn, { code: common + burnComputeWGSL });

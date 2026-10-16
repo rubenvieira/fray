@@ -44,6 +44,7 @@
     <script type="module" src="/src/main.js"></script>
   </head>
   <body class="loading">
+    <div class="yarn-target" hidden aria-hidden="true"></div>
     <div class="capture-guide" aria-hidden="true" hidden><span></span></div>
 
     <aside class="score" aria-label="Your session">
@@ -148,6 +149,18 @@
               <path d="M12 21c-4-2-3-5 0-8 0 3 4 4 0 8Z" />
             </svg>
             <span class="tool-name">Fire</span>
+          </button>
+          <button
+            class="toolitem"
+            type="button"
+            data-tool="unpick"
+            aria-pressed="false"
+            title="Unpick: catch one loose end and pull it free (8)"
+          >
+            <kbd>8</kbd
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m4 3 7 12m9-12-7 12M11 15l1 4 1-4M12 19c-1 3 5 3 6 0 1-2-1-4-3-3" /></svg
+            ><span class="tool-name">Unpick</span>
           </button>
         </div>
         <span class="pc-sep"></span>
@@ -536,7 +549,7 @@
       <p class="record-note" hidden>Recording your canvas · up to 20 seconds</p>
       <p class="camera-hint">
         <span class="desktop-hint"
-          >Scroll to zoom<span class="hint-dot">·</span>Right-drag to orbit<span class="hint-dot">·</span>1–7 to switch
+          >Scroll to zoom<span class="hint-dot">·</span>Right-drag to orbit<span class="hint-dot">·</span>1–8 to switch
           tools</span
         ><span class="touch-hint">One finger to tear<span class="hint-dot">·</span>Two to explore</span>
       </p>
@@ -621,7 +634,7 @@
             ><span class="experiment-content"
               ><span class="experiment-title">Color comes apart</span
               ><span class="experiment-meta">Madras · Knife · Hanging · Slow</span
-              ><span class="experiment-description">Start a slit, pin one side and pull the colored yarns apart.</span
+              ><span class="experiment-description">Open a slit, then catch and slowly draw out one colored yarn.</span
               ><span class="experiment-start"
                 >Try this <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16m-5-5 5 5-5 5" /></svg></span
             ></span></button

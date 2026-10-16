@@ -1,3 +1,4 @@
+import { YarnHand } from "../src/yarn-grip.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -47,6 +48,7 @@ function fixture({ projected = false } = {}) {
   const context = vm.createContext({
     ...mounts,
     targetSpeed,
+    YarnHand,
     X: (message) => messages.push(plain(message)),
     k: projected ? cameraMath.k : { target: [0, 0, 0], distance: 0.98, pitch: 0.16, yaw: 0 },
     sn: 1,
@@ -65,7 +67,7 @@ function fixture({ projected = false } = {}) {
     w: (a, b) => a.map((x, i) => x - b[i]),
     te: (v, scale) => v.map((x) => x * scale),
     KNIFE: { pickWindow: 0.012 },
-    TOOLS: ["hand", "blade", "claw", "fist", "pin", "air", "fire"],
+    TOOLS: ["hand", "blade", "claw", "fist", "pin", "air", "fire", "unpick"],
     Ot: { duration: 0.1, newtonIterations: 4 },
     GPUMapMode: { READ: 1 },
   });
@@ -1461,4 +1463,59 @@ test("Fire follows picked material and holes, release and cancellation cannot le
   await flush();
   f.engine.setTool("air");
   assert.equal(f.engine.firePoints.size, 0, "switching tools removes every igniter");
+});
+
+test("Unpick cancels delayed hits and releases its yarn immediately on navigation or finger up", async () => {
+  const f = fixture(),
+    picks = [],
+    holds = [],
+    targets = [];
+  let releases = 0;
+  f.engine.yarnGrip = {
+    active: false,
+    pick() {
+      const p = deferred();
+      picks.push(p);
+      return p.promise;
+    },
+    hold(hit) {
+      this.active = true;
+      holds.push(hit);
+    },
+    target(p) {
+      targets.push([...p]);
+    },
+    release() {
+      this.active = false;
+      releases++;
+    },
+  };
+  f.engine.setTool("unpick");
+  f.point("down", 100, 100);
+  await flush();
+  f.point("up", 100, 100);
+  picks[0].resolve({ node: 2, position: [0.1, 0.1, 0], root: [0, 0, 0] });
+  await flush();
+  assert.equal(holds.length, 0);
+  f.point("down", 100, 100);
+  await flush();
+  picks[1].resolve({ node: 2, position: [0.1, 0.1, 0], root: [0, 0, 0] });
+  await flush();
+  assert.equal(holds.length, 1);
+  assert.equal(f.engine.contact.node, 2);
+  f.setNow(1050);
+  f.point("move", 130, 110, 1050);
+  f.engine.stepThread(1 / 120, 1050);
+  assert.ok(targets.at(-1)[0] > 0.1);
+  f.point("up", 130, 110, 1050);
+  assert.equal(f.engine.threadGesture, null);
+  assert.equal(f.engine.yarnGrip.active, false);
+  f.point("down", 100, 100);
+  await flush();
+  f.engine.cancelPicks();
+  picks[2].resolve({ node: 3, position: [0, 0, 0], root: [0, 0, 0] });
+  await flush();
+  assert.equal(holds.length, 1);
+  assert.ok(releases >= 3);
+  assert.equal(f.attachments(), 0, "individual yarns never create a whole-cloth patch grip");
 });
