@@ -32,7 +32,7 @@ releases, a yarn keeps its existing bend and motion instead of restarting as a s
   **Keep in collection** in an image preview to save it; reopening the page preserves the pieces.
   Open a piece to download or share it, or remove it with the inline confirmation. Saving a new
   piece never evicts an existing one. Video clips use the existing download/share flow.
-- **Tools** (always visible in the bottom toolbar, or keys `1`-`7`): the **hand** grips and pulls; the **knife** (`K`) slashes,
+- **Tools** (always visible in the bottom toolbar, or keys `1`-`8`): the **hand** grips and pulls; the **knife** (`K`) slashes,
   cutting every yarn crossing along the stroke in weave space so the slit is continuous however fast
   you move; the **claw** (`C`) drags three sharp points that pierce the weave and ladder it; the
   **fist** (`B`) punches a blunt sphere down through the sheet where you click, tenting it until it
@@ -44,6 +44,13 @@ releases, a yarn keeps its existing bend and motion instead of restarting as a s
   the mounted, intact sheet naturally resists billowing. The hint lights while air is flowing, and the
   brush follows the visible folds even in angled views. One finger uses the tool; two fingers
   still orbit and pinch to zoom. Tool changes, camera gestures, framing and leaving the page stop the fans immediately.
+- **Unpick** (`8`): catch an exposed yarn end and slowly draw it through the weave. First use Knife
+  to make a notch and Hand to open it; Detail makes the ends easier to see. Hover highlights an end
+  you can catch; touch has a larger catch radius. The measured load line and released-crossing count
+  follow the actual grip. Each crossing holds until tension overcomes its friction. Ease back to
+  stop the release, then pull again to continue. After the last crossing lets go, the same yarn end
+  stays in your hand until you release it. Tool changes, orbiting, framing and leaving the page let go;
+  existing pins remain anchored. Fully extracted yarns fall and catch Air and wind.
 - **Fire** (`7`): hold on the cloth to ignite it, then release to watch the burn. Heat browns and chars
   the weave, consumes its yarn sections and opens holes through the existing tear solver. Flames rise
   and bend with the wind. Wool takes more heat than linen or gauze; nylon softens before sustained
@@ -128,6 +135,9 @@ Fringe cases preserve source yarn dyes and reject broken-end tufts on continuing
 Airflow cases cover two-sided and edge-on cloth,
 porosity, partial tears, free strands, pinned/retired nodes, overlapping fans, oblique aiming at raised
 and hanging folds, outward fans on vertical cloth, and cloth moving with or against the air.
+Individual-yarn cases verify root reaction, selective crossing release, slack, pause, resumption,
+full extraction, cancellation/reset and occlusion-correct end picking. Gripped-rod cases verify
+length, tip continuity through growth and final release at either held side, and letting go.
 Grip-load cases verify the actual GPU spring resultant, force clamp, released patches and translation
 invariance. They validate GPU calculations, not phone frame rates. Use a locally installed
 `playwright` package, or set `PLAYWRIGHT_MODULE` to an existing Playwright module's absolute path.
@@ -151,6 +161,7 @@ src/fray-material.js       material-specific fringe, filament and rod reconstruc
 src/tail-memory.js         bounded persistent free-tail identity and damped bending modes (WGSL)
 src/airflow.js             one shared physical airflow field for cloth and reconstructed yarns
 src/yarn-release.js        physical-time cohesive softening and friction-gated crossing slip
+src/yarn-grip.js           visible-end picking, single-yarn reaction and progressive extraction
 src/free-yarn.js           detached yarn reconstruction, air drag, length and contact constraints
 src/burn.js                material heat/fuel/char, actual yarn consumption and procedural flame/smoke plumes
 src/audio-preparation.js   tear-recording worker lifecycle and transferable channel copies
@@ -249,7 +260,14 @@ the sleep check from actual point displacement; Reset clears the approximately 1
 
 These are local appearance/reconstruction fits, not measured fibre properties. The mechanical
 lattice continues to carry yarn loads and determine rupture/pull-out. Reconstructed tails and
-slack bridges do not add load-bearing particles or feed new forces back into the sheet. The
+slack bridges do not add load-bearing particles. With Unpick, the selected yarn feeds a bounded
+elastic reaction into the four lattice nodes surrounding its current held crossing. Its rest
+length grows only as that yarn leaves successive fine crossings. Crossing resistance includes
+the material friction, local normal load and actual transverse span tension. The grip uses the
+material yarn and original cut end, so rebuilt run indices cannot switch it to a neighbor. Its
+rendered tip is constrained at the hand while segment lengths and the existing yarn cache survive
+growth and final release. This is a fitted single-yarn handle coupled to the bundled cloth solver,
+not a separate full filament contact solver. Ordinary ungripped tails remain reconstructed. The
 cache falls back to an equilibrium rod if its bounded probe cannot reserve a slot.
 
 Stress-driven cohesive damage now approaches its original force/strain target over a short physical

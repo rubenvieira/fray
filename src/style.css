@@ -2712,3 +2712,11 @@ body.pc-hidden .capture-guide { display: none; }
 
 .art-madras { background: repeating-linear-gradient(0deg,#08a9af88 0 28px,#df582988 28px 54px,transparent 54px 65px),repeating-linear-gradient(90deg,#08a9af 0 32px,#a6248b 32px 63px,#ddb747 63px 76px); }
 .art-shot { background: linear-gradient(130deg,#012d32,#049d8b 24%,#266478 42%,#ad1674 65%,#411b56); }
+
+/* A precise end-pick cue, outside the canvas and every clean export. */
+.yarn-target { position: fixed; z-index: 2; width: 13px; height: 13px; border: 1px solid var(--pc-accent); border-radius: 50%; transform: translate(-50%,-50%); box-shadow: 0 0 0 3px #100f0e90; pointer-events: none; }
+body.pc-hidden .yarn-target { display: none; }
+
+@media (min-width: 701px) and (max-width: 1400px) {
+  .dock.pc-dock .frame-toggle span, .dock.pc-dock .dock-actions span { display: none; }
+}

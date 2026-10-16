@@ -1,3 +1,4 @@
+import { yarnHandleRenderWGSL } from "../src/yarn-grip.js";
 import { additionalPresets, reinforcementStrength, materialColourWGSL } from "../src/material-library.js";
 import { freeYarnWGSL } from "../src/free-yarn.js";
 import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "../src/tail-memory.js";
@@ -12,6 +13,7 @@ import vm from "node:vm";
 
 const source = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
 const scope = vm.createContext({
+  yarnHandleRenderWGSL,
   additionalPresets,
   reinforcementStrength,
   materialColourWGSL,

@@ -8,6 +8,7 @@ import { prepareMount, mountCamera, hangingRail, toToolSpace, fromToolSpace, nor
 import { targetSpeed } from "./hand.js";
 import { additionalPresets, reinforcementStrength, materialColourWGSL } from "./material-library.js";
 import { captureSize, captureCrop } from "./capture-format.js";
+import { YarnGrip, YarnHand, yarnHandleRenderWGSL } from "./yarn-grip.js";
 
 var e = class extends Error {};
 const t = {
@@ -4096,6 +4097,7 @@ fn kappaSolve(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_in
 // rebuild scratch: present bits (2 per crossing, 16 per word), then anchored bits (same layout), then
 // cloth bits (1 per crossing, 32 per word)
 @group(0) @binding(9) var<storage, read_write> scratch: array<u32>;
+@group(0) @binding(10) var<storage, read> nodes: array<NodeStaticR>;
 
 override MAX_RUNS: u32 = 65536u;
 override MAX_CHUNKS: u32 = 262144u;
@@ -4362,6 +4364,17 @@ fn emitSplit(l: u32, f: u32, yarn: u32, pos: u32, n: u32, endA: u32, endB: u32) 
   emitRun(l, f, yarn, cur, pos + n - cur, curA, endB);
 }
 
+// A field boundary is a physical free edge unless the mounting actually
+// clamps its material node. Extracted yarns must not remain tied to an empty hem.
+fn yarnBorderKind(l:u32,f:u32,yarn:u32,start:bool)->u32 {
+  let LR=R.layers[l];let L=LR.lattice;
+  let B=select(bundleOf(LR,1u),bundleOf(LR,0u),f==0u);
+  let across=min(yarn/B,select(L.y,L.z,f==0u)-1u);
+  let end=select(select(L.z,L.y,f==0u)-1u,0u,start);
+  let node=L.x+select(end*L.y+across,across*L.y+end,f==0u);
+  return select(1u,2u,(nodes[node].flags&1u)!=0u);
+}
+
 @compute @workgroup_size(128)
 fn threadScan(@builtin(global_invocation_id) gid: vec3<u32>) {
   let c = gid.x;
@@ -4385,9 +4398,9 @@ fn threadScan(@builtin(global_invocation_id) gid: vec3<u32>) {
       n++;
     }
     // ends: 0 held in the cloth, 1 free (the yarn itself ends there), 2 the field's border
-    var endA = 2u;
+    var endA = yarnBorderKind(t.l,f,select(t.k,t.m,f==0u),true);
     if (pos > 0u) { endA = select(0u, 1u, yarnState(c - stride, f) == 0u); }
-    var endB = 2u;
+    var endB = yarnBorderKind(t.l,f,select(t.k,t.m,f==0u),false);
     if (pos + n < len) { endB = select(0u, 1u, yarnState(c + n * stride, f) == 0u); }
     // a short run held at both ends is a worn-through float of the cloth; a yarn end standing out of
     // an edge is a thread however short
@@ -4966,6 +4979,7 @@ fn tailRoot(ri: RunInfo, g: RunGeo, cA: vec3<f32>, cB: vec3<f32>) -> array<vec4<
 @group(0) @binding(9) var<storage, read> faceItems: array<vec4<f32>>;
 
 ${tailMemoryWGSL}
+${yarnHandleRenderWGSL}
 ${airflowWGSL}
 
 override MAX_RUNS: u32 = 65536u;
@@ -5104,16 +5118,23 @@ fn tailContact(a: vec3<f32>, b: vec3<f32>, reach: f32, root: u32, near: bool) ->
 fn threadTail(@builtin(global_invocation_id) gid: vec3<u32>) {
   let r = gid.x;
   if (r >= min(threadCount[0], MAX_RUNS)) { return; }
-  let h = runGeo[RUN_GEO * r];
+  var h = runGeo[RUN_GEO * r];
   let ri = runInfo(runs[r]);
+  var root = runGeo[RUN_GEO * r + 7u];
+  if (heldYarnMatches(ri) && (ri.heldA || ri.heldB)) {
+    let pitch = select(R.layers[ri.layer].pitch.y, R.layers[ri.layer].pitch.x, ri.fam == 0u);
+    h = vec4<f32>(0.0, select(ri.drawB, ri.drawA, ri.heldA), -1.0, (ri.drawB-ri.drawA)*pitch);
+    root = vec4<f32>(YS.root.xyz, f32(YS.nodes.x));
+    runGeo[RUN_GEO*r+7u] = root;
+  }
   if (h.x > 0.5 || (ri.heldA && ri.heldB) || h.w <= 0.1e-3) { return; }
-  let root = runGeo[RUN_GEO * r + 7u];
   if (root.w < 0.0) { return; }
   let k = atomicAdd(&tailCount[0], 1u);
   if (k >= MAX_TAILS) { return; }
   if (!ri.heldA && !ri.heldB) {
     freeYarnSolve(ri, root.xyz, runGeo[RUN_GEO * r + 8u].xyz, u32(root.w), k, h.w);
   } else { tailSolve(ri, root.xyz, runGeo[RUN_GEO * r + 8u].xyz, u32(root.w), k, h.w); }
+  pinYarnEnd(ri,k,h.w);
   runGeo[RUN_GEO * r] = vec4<f32>(h.xy, f32(k), h.w);
 }
 
@@ -6927,6 +6948,7 @@ var Fe = class {
       7: n.x,
       8: n.segs,
       9: this.threadScratch,
+      10: n.nodes,
     });
     let ee = new f(e, `pieces`, d + ue);
     for (let e of [
@@ -7001,6 +7023,8 @@ var Fe = class {
         10: this.tailHistory,
         11: this.tailWindU,
         12: this.tailFrameU,
+        13: n.yarnGrip.uniform,
+        14: n.yarnGrip.state,
       })),
       (this.edgeTex = e.createTexture({
         label: `edgeField`,
@@ -7742,7 +7766,7 @@ var Fe = class {
         size: n,
         format: `depth32float`,
         sampleCount: 4,
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       })),
       (this.hdr = this.device.createTexture({
         label: `hdr`,
@@ -7832,6 +7856,8 @@ var Fe = class {
       p.set([c[0] + 10 * g[0], c[1] + 10 * g[1], c[2] + 10 * g[2]], 36),
       this.device.queue.writeBuffer(this.frameOverU, 0, p));
     // Tail dynamics use fixed physical time; film/grain keep their display clock.
+    this.pickViewProj = s.viewProj;
+    this.solver.yarnGrip?.prepareRender(physicalTime);
     p[53] = physicalTime;
     this.device.queue.writeBuffer(this.tailFrameU, 0, p);
     if (this.airflowData) this.device.queue.writeBuffer(this.tailWindU, 0, this.airflowData);
@@ -7951,7 +7977,7 @@ var Fe = class {
         view: this.msaaDepth.createView(),
         depthClearValue: 1,
         depthLoadOp: `clear`,
-        depthStoreOp: `discard`,
+        depthStoreOp: `store`,
       },
     });
     (C.setBindGroup(0, this.groups.surface),
@@ -15382,7 +15408,7 @@ var ClipRecorder = class {
 
 // settle substeps after a warm start from the denim's drape
 const WARM_SETTLE = 48;
-const TOOLS = [`hand`, `blade`, `claw`, `fist`, `pin`, `air`, `fire`];
+const TOOLS = [`hand`, `blade`, `claw`, `fist`, `pin`, `air`, `fire`, `unpick`];
 function makeFabricFire(device, solver) {
   return new FabricFire(device, solver, _, f);
 }
@@ -15409,6 +15435,9 @@ const Q = Dt.h,
     solver;
     renderer;
     interaction;
+    yarnGrip = null;
+    threadGesture = null;
+    threadHoverTask = null;
     topology;
     body;
     stage = null;
@@ -15543,14 +15572,18 @@ const Q = Dt.h,
         (this.solver = new Pt(this.device, this.scene, Dt)),
         Z(0.5),
         (this.interaction = new He(this.device, this.solver, this.scene)),
-        (this.solver.preSubstep = (e) => this.interaction.encodeSubstep(e)),
+        (this.yarnGrip = this.solver.yarnGrip = new YarnGrip(this.device, this.solver, this.scene, _, releaseWGSL)),
+        (this.solver.preSubstep = (e) => {
+          this.interaction.encodeSubstep(e);
+          this.yarnGrip.encodeAdvance(e);
+        }),
         (this.body = new on(this.device, this.solver, this.scene)),
         (this.fire = this.solver.fire = makeFabricFire(this.device, this.solver)),
         (this.solver.postCommit = (e) => {
           (this.body.encodePierce(e), this.body.encodeSlash(e), this.fire.encode(e));
         }),
         (this.solver.preAssemble = (e) => {
-          (this.body.encode(e), this.interaction.encode(e));
+          (this.body.encode(e), this.interaction.encode(e), this.yarnGrip.encodeTerms(e));
         }),
         (this.topology = new tn(this.device, this.solver, this.scene, () => this.interaction.coreNodes)),
         (this.renderer = new Fe(this.device, d, this.solver, this.scene)),
@@ -15568,7 +15601,7 @@ const Q = Dt.h,
         this.solver.setFloor(this.renderer.floorZ),
         (this.speedProbe = this.device.createBuffer({
           label: `speedProbe`,
-          size: 256,
+          size: 320,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })),
         Z(0.7));
@@ -15836,15 +15869,22 @@ const Q = Dt.h,
     }
     toolCursor() {
       return (
-        { blade: `crosshair`, claw: `cell`, fist: `pointer`, pin: `copy`, air: `crosshair`, fire: `crosshair` }[
-          this.tool
-        ] ?? `grab`
+        {
+          blade: `crosshair`,
+          claw: `cell`,
+          fist: `pointer`,
+          pin: `copy`,
+          air: `crosshair`,
+          fire: `crosshair`,
+          unpick: `crosshair`,
+        }[this.tool] ?? `grab`
       );
     }
     setTool(e) {
       if (!TOOLS.includes(e) || e === this.tool) return;
       // hands let go; pins stay (they are the point of the pin tool)
       (this.pickToken++, this.picking.clear(), this.strokes.clear(), this.claws.clear());
+      this.endThread();
       this.clearAir();
       this.clearFire();
       this.fistPicks.clear();
@@ -16355,6 +16395,10 @@ const Q = Dt.h,
         this.releaseAll(!!e.preservePins);
         return;
       }
+      if (this.tool === `unpick`) {
+        this.threadPointer(e);
+        return;
+      }
       if (this.tool === `blade`) {
         this.bladePointer(e);
         return;
@@ -16394,6 +16438,114 @@ const Q = Dt.h,
           : e.phase === `up` && this.down.has(e.id)
             ? (this.down.get(e.id).add(t), (this.down.get(e.id).upTime = t.time))
             : (this.down.delete(e.id), this.picking.delete(e.id), this.endGrip(e.id));
+    }
+    endThread() {
+      const held = this.threadGesture;
+      this.threadGesture = null;
+      this.yarnGrip?.release();
+      if (held) {
+        this.wake();
+        X({ type: `yarn`, state: `idle` });
+      }
+    }
+    threadPointer(event) {
+      if (!this.yarnGrip) return;
+      if (event.phase === `hover`) {
+        if (this.threadGesture || this.threadHoverTask) return;
+        const token = this.pickToken;
+        this.threadHoverTask = this.pickThread(event)
+          .then((hit) => {
+            if (token !== this.pickToken || this.threadGesture || this.tool !== `unpick`) return;
+            const point = hit ? O(this.renderer.pickViewProj, [...hit.position, 1]) : null;
+            X({
+              type: `yarn`,
+              state: hit ? `hover` : `idle`,
+              point: point
+                ? [
+                    ((point[0] / point[3]) * 0.5 + 0.5) * this.cssWidth,
+                    (0.5 - (point[1] / point[3]) * 0.5) * this.cssHeight,
+                  ]
+                : null,
+            });
+            X({ type: `cursor`, cursor: hit ? `grab` : `crosshair` });
+          })
+          .catch(() => {})
+          .finally(() => {
+            this.threadHoverTask = null;
+          });
+        return;
+      }
+      if (event.phase === `down`) {
+        if (this.threadGesture) return;
+        const gesture = (this.threadGesture = { id: event.id, track: new Ge(event), epoch: this.releaseEpoch });
+        this.beginThread(gesture, event);
+      } else if (this.threadGesture?.id === event.id) {
+        if (event.phase === `move`) this.threadGesture.track.add(event);
+        else this.endThread();
+      }
+    }
+    pickThread(event) {
+      const vp = this.renderer.pickViewProj ?? A(this.camera, this.width / this.height).viewProj;
+      return this.yarnGrip.pick(
+        this.renderer,
+        vp,
+        event.x,
+        event.y,
+        this.cssWidth,
+        this.cssHeight,
+        event.pointerType === `touch` ? 20 : 10,
+      );
+    }
+    async beginThread(gesture, event) {
+      try {
+        await this.threadHoverTask;
+        if (this.threadGesture !== gesture) return;
+        const hit = await this.pickThread(event);
+        if (this.threadGesture !== gesture || gesture.epoch !== this.releaseEpoch || this.tool !== `unpick`) return;
+        if (!hit) {
+          this.threadGesture = null;
+          X({ type: `yarn`, state: `miss` });
+          return;
+        }
+        const view = A(this.camera, this.width / this.height),
+          normal = E(w(this.camera.target, view.eye));
+        Object.assign(gesture, {
+          hand: new YarnHand(hit.position),
+          plane: hit.position,
+          normal,
+          downPoint: hit.position,
+          inputTime: event.time,
+        });
+        gesture.downPoint = this.planePoint(gesture, event) ?? hit.position;
+        this.yarnGrip.hold(hit);
+        this.rememberContact({ node: hit.node, position: hit.root });
+        this.wake();
+        this.dirty = true;
+        X({ type: `yarn`, state: `held`, force: 0, crossings: 0 });
+        X({ type: `cursor`, cursor: `grabbing` });
+      } catch (error) {
+        console.warn(`Yarn grip unavailable`, error);
+        if (this.threadGesture === gesture) {
+          this.endThread();
+          X({ type: `yarn`, state: `miss` });
+        }
+      }
+    }
+    stepThread(dt, time) {
+      const g = this.threadGesture;
+      if (!g?.hand) return;
+      const sampleTime = time,
+        elapsed = Math.min(0.1, Math.max(0, (sampleTime - g.inputTime) / 1000));
+      const slices = Math.max(1, Math.ceil(elapsed / Q - 1e-6));
+      const view = A(this.camera, this.width / this.height);
+      for (let j = 0; j < slices; j++) {
+        const at = sampleTime - 1000 * elapsed * (1 - (j + 1) / slices),
+          point = this.planePoint(g, g.track.at(at), view);
+        g.hand.step(elapsed / slices, point ? w(point, g.downPoint) : [0, 0, 0]);
+      }
+      g.inputTime = sampleTime;
+      g.track.prune(sampleTime);
+      this.yarnGrip.target(g.hand.target);
     }
     async beginGrip(e, t) {
       let n = ++this.pickToken;
@@ -16479,6 +16631,7 @@ const Q = Dt.h,
       this.grips.size === 0 && X({ type: `cursor`, cursor: `grab` });
     }
     releaseAll(preservePins = !1) {
+      this.endThread();
       this.fistPicks.clear();
       this.clearAir();
       this.clearFire();
@@ -16488,6 +16641,7 @@ const Q = Dt.h,
       this.down.clear();
     }
     cancelPicks() {
+      this.endThread();
       this.clearAir();
       this.clearFire();
       this.fistPicks.clear();
@@ -16554,6 +16708,7 @@ const Q = Dt.h,
     }
     stepHandles(e, t, inputStep = e / this.timeScale) {
       ((this.simTime += e), this.stepProps(e), this.stepAir(e), this.body.tickWind(this.simTime, e));
+      this.stepThread(e, t);
       this.fire?.step(
         e,
         this.simTime,
@@ -16650,6 +16805,8 @@ const Q = Dt.h,
       const measureLoad = measuredGrips.length > 0 && !!this.interaction.gripGoal;
       const measureTails = !!this.renderer.tailCount;
       const measureFire = !!this.fire;
+      const thread = this.threadGesture;
+      const measureThread = !!thread?.hand && !!this.yarnGrip?.active;
       const fireGeneration = this.fire?.generation;
       const contact = this.contact;
       const measureContact =
@@ -16661,6 +16818,7 @@ const Q = Dt.h,
         measureTails && r.copyBufferToBuffer(this.renderer.tailCount, 0, t, 208, 16),
         measureFire && r.copyBufferToBuffer(this.fire.count, 0, t, 224, 16),
         measureContact && r.copyBufferToBuffer(this.solver.x, 16 * contact.node, t, 240, 16),
+        measureThread && r.copyBufferToBuffer(this.yarnGrip.state, 0, t, 256, 64),
         r.clearBuffer(this.solver.counters, 8, 4),
         this.device.queue.submit([r.finish()]),
         t.mapAsync(GPUMapMode.READ).then(
@@ -16696,6 +16854,21 @@ const Q = Dt.h,
                 if (Number.isFinite(value)) force = Math.max(force, value);
               }
             }
+            if (measureThread && this.threadGesture === thread && thread.epoch === this.releaseEpoch) {
+              const data = new Float32Array(e, 256, 16),
+                ids = new Uint32Array(e, 304, 4);
+              if (data[3] >= 3) {
+                this.endThread();
+              } else {
+                X({
+                  type: `yarn`,
+                  state: data[3] >= 2 ? `free` : `held`,
+                  force: data[11],
+                  crossings: Math.round(data[2]),
+                });
+                if (data[3] < 2) this.rememberContact({ node: ids[0], position: Array.from(data.slice(4, 7)) });
+              }
+            }
             t.unmap();
             this.probeBusy = !1;
             if (epoch !== this.releaseEpoch) return;
@@ -16706,7 +16879,7 @@ const Q = Dt.h,
             if (ruptures || pulledOut) X({ type: `tear`, ruptures, pulledOut });
             if (
               (a !== this.topologyEvents && ((this.topologyEvents = a), this.topology.request()),
-              this.grips.size > 0 || this.asleep || this.stage)
+              this.grips.size > 0 || this.threadGesture || this.asleep || this.stage)
             ) {
               this.restFor = 0;
               return;
@@ -16730,7 +16903,8 @@ const Q = Dt.h,
         this.claws.size ||
         this.fists.length ||
         this.airJets.size ||
-        this.firePoints.size;
+        this.firePoints.size ||
+        this.threadGesture;
       const interval = interacting ? 1000 / 60 - 2 : 1000 / 30 - 2;
       if (this.inFlight || (!this.asleep && !this.paused && e - this.lastPresent < interval)) return;
       const workStarted = performance.now();
@@ -16742,7 +16916,8 @@ const Q = Dt.h,
           this.fists.length > 0 ||
           this.claws.size > 0 ||
           this.firePoints.size > 0 ||
-          this.fire?.enabled) &&
+          this.fire?.enabled ||
+          this.threadGesture?.hand) &&
           !this.stage &&
           !this.paused &&
           this.wake());
@@ -16974,6 +17149,7 @@ const Q = Dt.h,
           wind: this.windLevel,
           lighting: this.lightMode,
           airJets: this.airJets.size,
+          yarnHeld: !!this.threadGesture?.hand,
           fireSources: this.firePoints.size,
           burning: this.fire?.enabled ?? false,
           timeScale: this.timeScale,

@@ -311,7 +311,7 @@ const EXPERIMENTS = {
     tool: `blade`,
     wind: 0,
     slow: true,
-    tip: `Cut a short slit. Pin above it, pull below it, then frame the colored yarns in Detail.`,
+    tip: `Cut a short slit. Pull it open with Hand, then use Unpick to draw out a single colored yarn. Try Detail for a closer look.`,
   },
   shot: {
     name: `A change of silk`,
@@ -363,6 +363,10 @@ const FABRIC_NAMES = {
   ballistic: `Ballistic`,
 };
 const TOOL_GUIDES = {
+  unpick: [
+    `One thread at a time.`,
+    `Cut and pull a small notch first. Catch a loose end, then draw it slowly out of the weave.`,
+  ],
   hand: [`Pull at the possibilities.`, `Drag the fabric to stretch and tear it.`],
   blade: [`Make the cut.`, `Drag across the fabric to slice through its threads.`],
   claw: [`Leave your mark.`, `Drag to rake three sharp trails through the weave.`],
@@ -561,6 +565,54 @@ const gripFeedback = createGripFeedback({
     if (currentTool === `hand`) guide.querySelector(`.guide-title`).textContent = label ?? TOOL_GUIDES.hand[0];
   },
 });
+function updateYarnHint(message = { state: `idle` }) {
+  const marker = document.querySelector(`.yarn-target`),
+    guide = document.querySelector(`.interaction-guide`);
+  const active = currentTool === `unpick` && [`held`, `free`].includes(message.state);
+  marker.hidden = !(
+    currentTool === `unpick` &&
+    message.state === `hover` &&
+    message.point &&
+    !framing &&
+    !activeDialog
+  );
+  if (!marker.hidden) {
+    marker.style.left = `${message.point[0]}px`;
+    marker.style.top = `${message.point[1]}px`;
+  }
+  if (currentTool !== `unpick`) return;
+  guide.classList.toggle(`grip-active`, active);
+  guide.style.setProperty(
+    `--grip-load`,
+    String(Math.min(1, Math.log1p(Math.max(0, message.force || 0) * 20) / Math.log(41))),
+  );
+  const title =
+    message.state === `free`
+      ? `The last crossing let go.`
+      : message.state === `held`
+        ? message.force > 0.002
+          ? message.crossings
+            ? `Unraveling the weave.`
+            : `Under tension.`
+          : `One yarn in your hand.`
+        : message.state === `hover`
+          ? `There’s a loose end.`
+          : message.state === `miss`
+            ? `Find a loose end.`
+            : TOOL_GUIDES.unpick[0];
+  const text =
+    message.state === `free`
+      ? `The yarn is free. Release to let it fall.`
+      : message.state === `held`
+        ? `${message.crossings || 0} crossings released. Pull gently; ease back to stop the unraveling.`
+        : message.state === `hover`
+          ? `Catch this end and pull slowly. Each crossing holds until the tension overcomes it.`
+          : message.state === `miss`
+            ? `Cut a notch, pull it open with Hand, then zoom in and catch one of the exposed ends.`
+            : TOOL_GUIDES.unpick[1];
+  guide.querySelector(`.guide-title`).textContent = title;
+  guide.querySelector(`.guide-description`).textContent = text;
+}
 let canvasAudioAbort;
 const airPointers = new Set();
 const firePointers = new Set();
@@ -608,6 +660,7 @@ function cancelStagePointer(time) {
   updateAirHint();
   firePointers.clear();
   updateFireHint();
+  updateYarnHint();
   gripFeedback.reset();
   tearFeedback.reset();
   C({ type: `pointer`, phase: `cancel`, id: -1, preservePins: true, seq: k++, time: A(time), x: 0, y: 0 });
@@ -631,6 +684,42 @@ function bindCanvas(canvas) {
       touchShred();
     },
   });
+  let hoverAt = 0;
+  canvas.addEventListener(
+    `pointermove`,
+    (event) => {
+      if (
+        currentTool !== `unpick` ||
+        event.buttons ||
+        event.pointerType === `touch` ||
+        !engineReady ||
+        activeDialog ||
+        framing ||
+        pausePending ||
+        performance.now() - hoverAt < 90
+      )
+        return;
+      hoverAt = performance.now();
+      const rect = canvas.getBoundingClientRect();
+      C({
+        type: `pointer`,
+        phase: `hover`,
+        id: event.pointerId,
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        pointerType: event.pointerType,
+        time: A(event.timeStamp),
+      });
+    },
+    { signal: canvasAudioAbort.signal },
+  );
+  canvas.addEventListener(
+    `pointerleave`,
+    () => {
+      if (currentTool === `unpick`) document.querySelector(`.yarn-target`).hidden = true;
+    },
+    { signal: canvasAudioAbort.signal },
+  );
   // Start the intent timer before audio initialization, while both still share
   // the original trusted event. First-touch audio setup then overlaps the wait.
   canvas.addEventListener(
@@ -709,7 +798,16 @@ for (let e of fabricButtons)
     toast(`Fresh ${FABRIC_NAMES[fabric]}. Make something of it.`);
   }));
 // ---------------------------------------------------------------- tools menu
-const TOOL_NAMES = { hand: `Hand`, blade: `Knife`, claw: `Claw`, fist: `Fist`, pin: `Pin`, air: `Air`, fire: `Fire` };
+const TOOL_NAMES = {
+  hand: `Hand`,
+  blade: `Knife`,
+  claw: `Claw`,
+  fist: `Fist`,
+  pin: `Pin`,
+  air: `Air`,
+  fire: `Fire`,
+  unpick: `Unpick`,
+};
 function toolGuide(tool) {
   return tool === `air` && mount === `hanging`
     ? [`Let it breathe.`, `Hold and sweep to billow the cloth. Release to let it settle.`]
@@ -797,6 +895,7 @@ window.__fabricDev = (e) =>
 new Promise((e) => (I = e));
 function onWorkerMessage(e) {
   let t = e.data;
+  if (t.type === `yarn`) updateYarnHint(t);
   if (t.type === `tension`) gripFeedback.sample(t.force);
   if (t.type === `tear`) gripFeedback.tear(t);
   if (t.type === `devDone`) (F.get(t.id)?.(t.result), F.delete(t.id));
@@ -1301,6 +1400,7 @@ function shortcut(e) {
     5: `pin`,
     6: `air`,
     7: `fire`,
+    8: `unpick`,
     k: `blade`,
     c: `claw`,
     b: `fist`,

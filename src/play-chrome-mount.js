@@ -22,7 +22,7 @@ document.body.insertAdjacentHTML(
     items: [
       [
         `Tools`,
-        `Drag with <b>Hand</b> to pull and tear. <b>Knife</b> and <b>Claw</b> slice, <b>Fist</b> punches, <b>Pin</b> anchors or releases a point. Hold and sweep with <b>Air</b> to billow the fabric or catch a loose ribbon. The Hand hint shows resistance as you pull. Release to let the cloth settle. Touch works too.`,
+        `Drag with <b>Hand</b> to pull and tear. <b>Knife</b> and <b>Claw</b> slice, <b>Fist</b> punches, <b>Pin</b> anchors or releases a point. Hold and sweep with <b>Air</b> to billow the fabric or catch a loose ribbon. The Hand hint shows resistance as you pull. With <b>Unpick</b>, catch one exposed yarn end and slowly draw it free, crossing by crossing. Ease back to stop; release to let it fall. A small notch and Detail view make the loose ends easier to catch. Touch works too.`,
       ],
       [
         `Fabric`,
@@ -46,7 +46,7 @@ document.body.insertAdjacentHTML(
       ],
       [
         `Keys`,
-        `1–7 tools · F next fabric · R fresh sheet · W wind · T slow motion · X shake · Space frame · V record · S save · M sound · H hides the interface · ? this page.`,
+        `1–8 tools · F next fabric · R fresh sheet · W wind · T slow motion · X shake · Space frame · V record · S save · M sound · H hides the interface · ? this page.`,
       ],
     ],
     close: `Back to the fabric`,
