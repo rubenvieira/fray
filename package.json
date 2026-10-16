@@ -4,6 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Fray: rip real fabric in your browser (WebGPU yarn-level cloth tearing)",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rubenvieira/fray"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

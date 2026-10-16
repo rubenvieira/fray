@@ -48,6 +48,10 @@ document.body.insertAdjacentHTML(
         `Keys`,
         `1–8 tools · F next fabric · R fresh sheet · W wind · T slow motion · X shake · Space frame · V record · S save · M sound · H hides the interface · ? this page.`,
       ],
+      [
+        `Credits`,
+        `Fray is a modified version of <a href="https://github.com/scottstts/Break-That-Denim" target="_blank" rel="noreferrer">Break That Denim</a> by Scott Sun, whose yarn engine, tear sound and Smilie it builds on. Free software under the <a href="LICENSE.txt" target="_blank">GPL-3.0</a>, with no warranty; <a href="https://github.com/rubenvieira/fray" target="_blank" rel="noreferrer">source code</a> · <a href="NOTICE.txt" target="_blank">notices</a>.`,
+      ],
     ],
     close: `Back to the fabric`,
   }),

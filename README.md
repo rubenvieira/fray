@@ -93,8 +93,9 @@ releases, a yarn keeps its existing bend and motion instead of restarting as a s
 - The Fabric menu also includes the "Smilie" experience. Changing fabric starts a fresh sheet;
   finish an active recording before switching.
 
-The simulation core descends from [denim.scottsun.io](https://denim.scottsun.io) (a denim tear
-simulation, reproduced from its deployed build); the denim preset is also available in the Fabric menu.
+Fray is a modified version of [Break That Denim](https://github.com/scottstts/Break-That-Denim) by
+Scott Sun ([denim.scottsun.io](https://denim.scottsun.io)), reproduced from its deployed build; the
+denim preset is also available in the Fabric menu. See [Credits and licence](#credits-and-licence).
 
 The added materials are fitted artistic models, not measured textile specifications. Madras changes
 plain-weave compliance, strength and yarn dimensions; shot silk shades the two dyed yarn families
@@ -330,3 +331,23 @@ __fabricDev({ op: "drape" }).then((b) => {
 
 The HTML, CSS, JavaScript and assets are reproduced from the deployed site's build output and formatted for
 readability. Source maps were not published, so identifiers in `src/*.js` are the minified ones.
+
+## Credits and licence
+
+Fray is a modified version of **Break That Denim** by **Scott Sun**
+([source](https://github.com/scottstts/Break-That-Denim), [live](https://denim.scottsun.io)): its yarn-level
+cloth engine, tear-sound worklet, ambient sounds and the Smilie model come from that project.
+
+Copyright (C) 2026 Scott Sun (Break That Denim)
+Copyright (C) 2026 Ruben Vieira (modifications)
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License, version 3 only, as published by the Free Software Foundation. It is
+distributed WITHOUT ANY WARRANTY; see [LICENSE](LICENSE) for the full terms.
+
+**Modified by Ruben Vieira, 12–16 October 2026:** knife, claw, fist, pin, air, unpick and fire tools;
+eleven more fabrics and photo printing; the hanging setup, wind, slow motion and shake; framing,
+recording and the Collection; and the shared Play interface. The commit history records every change.
+
+Bundled third-party software and its notices are listed in [public/NOTICE.txt](public/NOTICE.txt), which
+ships with the site, alongside a copy of the licence.

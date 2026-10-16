@@ -2720,3 +2720,6 @@ body.pc-hidden .yarn-target { display: none; }
 @media (min-width: 701px) and (max-width: 1400px) {
   .dock.pc-dock .frame-toggle span, .dock.pc-dock .dock-actions span { display: none; }
 }
+
+/* Links in the About dialog (credits and licence) read as text, not browser blue. */
+.pc-about dd a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
