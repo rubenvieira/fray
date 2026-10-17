@@ -1,3 +1,4 @@
+import { AtelierKnifeRenderer } from './atelier-knife-renderer.js';
 import { tailMemoryWGSL, TAIL_HISTORY_BYTES } from "./tail-memory.js";
 import { frayMaterialWGSL } from "./fray-material.js";
 import { airflowWGSL } from "./airflow.js";
@@ -16305,6 +16306,8 @@ const Q = Dt.h,
     }
     // Keep a short path while GPU picking is in flight, preserving turns and the release endpoint.
     bladePointer(e) {
+      if (e.phase === 'up') this.knifeView?.release(this.driven ? this.drivenTime : performance.now());
+      if (e.phase === 'cancel') this.knifeView?.hide();
       if (e.phase === `cancel` && e.id === -1) {
         this.strokes.clear();
         return;
@@ -16349,7 +16352,7 @@ const Q = Dt.h,
         }
       }
       if (t.busy) return;
-      if (!t.pending.length || (t.done && Rn(performance.now()) - t.doneAt > 200)) {
+      if (!t.pending.length || (t.done && (this.driven ? Rn(this.drivenTime) : Rn(performance.now())) - t.doneAt > 200)) {
         if (t.done) this.strokes.delete(e);
         return;
       }
@@ -16374,12 +16377,15 @@ const Q = Dt.h,
       this.interaction.pickAt(i.viewProj, a, o, this.width, this.height, s).then(
         (n) => {
           if (((t.busy = !1), this.strokes.get(e) !== t)) return;
-          if (t.done && Rn(performance.now()) - t.doneAt > 200) {
+          if (t.done && (this.driven ? Rn(this.drivenTime) : Rn(performance.now())) - t.doneAt > 200) {
             this.strokes.delete(e);
             return;
           }
           if (n) {
             this.rememberContact(n);
+            this.knifeView?.contact(n.position, t.knifePoint ? n.position.map((v,i) => v - t.knifePoint[i]) : null, this.mount, this.driven ? this.drivenTime : performance.now());
+            t.knifePoint = [...n.position];
+            if (t.done) this.knifeView?.release(this.driven ? this.drivenTime : performance.now());
             (this.body.cut(t.last >= 0 ? t.last : n.node, n.node), (t.last = n.node), this.wake(), (this.dirty = !0));
           } else t.last = -1;
           this.bladeSample(e, t);
@@ -16631,6 +16637,7 @@ const Q = Dt.h,
       this.grips.size === 0 && X({ type: `cursor`, cursor: `grab` });
     }
     releaseAll(preservePins = !1) {
+      this.knifeView?.hide();
       this.endThread();
       this.fistPicks.clear();
       this.clearAir();
@@ -16893,6 +16900,7 @@ const Q = Dt.h,
     frame(e) {
       if (!this.ready) return;
       In.requestAnimationFrame((e) => this.frame(e));
+      if (this.driven) return;
       let t = Math.max(0, (e - this.lastFrame) / 1e3),
         n = Math.min(0.1, t);
       // Spend frames where they matter: direct interaction can run at 60 Hz. The GPU queue
@@ -16921,6 +16929,7 @@ const Q = Dt.h,
           !this.stage &&
           !this.paused &&
           this.wake());
+      if (this.knifeView?.visible && this.knifeView.released !== null) { this.knifeView.update(e); this.dirty = true; }
       let r = 0;
       if (
         (this.visible &&
@@ -16953,6 +16962,7 @@ const Q = Dt.h,
       if (
         (this.stage || this.reacquireSignal(e),
         (this.frameTexture = this.context.getCurrentTexture()),
+        this.knifeView?.update(e),
         this.renderer.encode(
           o,
           s,
@@ -17076,13 +17086,34 @@ const Q = Dt.h,
     async runSubsteps(e) {
       for (let t = 0; t < e; t++) {
         if (this.paused) return;
-        this.stepHandles(Q, Rn(performance.now()));
+        this.stepHandles(Q, Rn(this.driven ? this.drivenTime : performance.now()));
         let e = this.device.createCommandEncoder({ label: `devSubstep` });
         (this.solver.encodeSubstep(e, this.substepIterations()),
           this.device.queue.submit([e.finish()]),
           (t & 3) == 3 && (await this.device.queue.onSubmittedWorkDone()));
       }
       await this.device.queue.onSubmittedWorkDone();
+    }
+    async drivenFrame(dt) {
+      this.drivenTime += dt * 1000;
+      await this.runSubsteps(Math.round(dt / Q));
+      const texture = this.context.getCurrentTexture(), width = texture.width, height = texture.height;
+      const stride = Math.ceil(width * 4 / 256) * 256;
+      const buffer = this.device.createBuffer({ size: stride * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+      const encoder = this.device.createCommandEncoder({ label: 'Knife Atelier capture' });
+      this.knifeView?.update(this.drivenTime);
+      this.renderer.encode(encoder, this.camera, this.drivenTime / 1000, texture.createView(), undefined, this.simTime);
+      encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: stride }, [width, height]);
+      this.device.queue.submit([encoder.finish()]);
+      await buffer.mapAsync(GPUMapMode.READ);
+      const source = new Uint8Array(buffer.getMappedRange()), pixels = new Uint8ClampedArray(width * height * 4), bgra = this.canvasFormat.startsWith('bgra');
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const i = y * stride + x * 4, j = (y * width + x) * 4;
+        pixels[j] = source[i + (bgra ? 2 : 0)]; pixels[j+1] = source[i+1]; pixels[j+2] = source[i + (bgra ? 0 : 2)]; pixels[j+3] = 255;
+      }
+      buffer.unmap(); buffer.destroy();
+      const image = new OffscreenCanvas(width, height); image.getContext('2d').putImageData(new ImageData(pixels, width, height), 0, 0);
+      return image.convertToBlob({ type: 'image/jpeg', quality: .94 });
     }
     // crossings with both yarns cut (dev)
     async cutCrossings() {
@@ -17093,6 +17124,8 @@ const Q = Dt.h,
     }
     async dev(e) {
       if (!this.ready) return null;
+      if (e.op === 'drive') { this.driven = true; this.drivenTime = performance.now(); return true; }
+      if (e.op === 'frame') return this.drivenFrame(Math.max(0, e.dt ?? 1/30));
       if (e.op === `step`) {
         await this.runSubsteps(e.substeps);
         let t = new Uint32Array(await u(this.device, this.solver.counters, 8));
@@ -17103,6 +17136,7 @@ const Q = Dt.h,
         await this.runSubsteps(e.substeps ?? 2);
         return this.cutCrossings();
       }
+      if (e.op === 'knife') return this.knifeView ? { ...this.knifeView.metadata, visible: this.knifeView.visible, parts: this.knifeView.parts.length, position: this.knifeView.position } : null;
       if (e.op === `cuts`) return this.cutCrossings();
       if (e.op === `printFill`) {
         // dev: a solid print written directly (no bitmap), to tell the upload path from the shader path
@@ -17191,10 +17225,18 @@ In.onmessage = (t) => {
           }));
       });
       break;
+    case 'knife-assets':
+      if ($.renderer) {
+        if ($.knifeView) { $.renderer.extras = $.renderer.extras.filter(v => v !== $.knifeView); $.knifeView.dispose(); }
+        $.knifeView = new AtelierKnifeRenderer($.renderer, n.parts, n.metadata); $.renderer.extras.push($.knifeView);
+        $.dirty = true; X({ type: 'knife-ready' });
+      }
+      break;
     case `resize`:
       $.setSize(n.width, n.height, n.cssWidth, n.cssHeight);
       break;
     case `pointer`:
+      if ($.driven) n.time = Rn($.drivenTime);
       $.pointer(n);
       break;
     case `wheel`:

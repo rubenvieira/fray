@@ -23,6 +23,8 @@
     "vite": "^7.1.0"
   },
   "dependencies": {
-    "mp4-muxer": "^5.2.2"
+    "mp4-muxer": "^5.2.2",
+    "three": "0.184.0",
+    "@rubenvieira/knife-atelier": "https://play.rubenv.net/knife-atelier/library/packages/rubenvieira-knife-atelier-1.3.0.tgz"
   }
 }

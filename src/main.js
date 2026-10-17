@@ -1,3 +1,4 @@
+import { prepareAtelierKnife } from './atelier-knife.js';
 import "./play-chrome-mount.js";
 import { ADDITIONAL_MATERIALS } from "./material-library.js";
 import { CAPTURE_FORMATS, captureSize, captureCrop } from "./capture-format.js";
@@ -893,8 +894,15 @@ window.__fabricDev = (e) =>
     (F.set(n, t), C({ type: `dev`, id: n, ...e }));
   });
 new Promise((e) => (I = e));
+async function installAtelierKnife(worker) {
+  const assets = await prepareAtelierKnife();
+  if (worker !== S) return;
+  window.frayKnifeLibrary = { ...assets.metadata, ready: false };
+  worker.postMessage({ type: 'knife-assets', parts: assets.parts, metadata: assets.metadata }, assets.transfers);
+}
 function onWorkerMessage(e) {
   let t = e.data;
+  if (t.type === 'knife-ready' && window.frayKnifeLibrary) window.frayKnifeLibrary.ready = true;
   if (t.type === `yarn`) updateYarnHint(t);
   if (t.type === `tension`) gripFeedback.sample(t.force);
   if (t.type === `tear`) gripFeedback.tear(t);
@@ -917,6 +925,7 @@ function onWorkerMessage(e) {
       document.querySelector(`.error-panel`).hidden = true;
       h.classList.remove(`visible`);
       I();
+      if (!S.atelierInstalled) { S.atelierInstalled = true; void installAtelierKnife(S).catch(onWorkerError); }
       // The worker ignores prints until its renderer is ready.
       if (printCanvas) sendPrint();
       if (pendingExperiment) finishExperiment();

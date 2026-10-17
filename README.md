@@ -351,3 +351,7 @@ recording and the Collection; and the shared Play interface. The commit history 
 
 Bundled third-party software and its notices are listed in [public/NOTICE.txt](public/NOTICE.txt), which
 ships with the site, alongside a copy of the licence.
+
+## Shared knife
+
+The knife geometry, photographic walnut and steel materials come from `@rubenvieira/knife-atelier` 1.3.0. Its immutable archive URL and integrity are pinned in `package.json` and `package-lock.json`. Update both together for a collection revision; author knife geometry in Knife Atelier. Local parent transforms adapt the model to this experiment’s cutting frame.
