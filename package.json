@@ -25,6 +25,6 @@
   "dependencies": {
     "mp4-muxer": "^5.2.2",
     "three": "0.184.0",
-    "@rubenvieira/knife-atelier": "https://cdn.rubenv.net/knife-atelier/packages/rubenvieira-knife-atelier-1.3.0.tgz"
+    "@rubenvieira/knife-atelier": "file:vendor/rubenvieira-knife-atelier-1.3.0.tgz"
   }
 }

@@ -354,4 +354,4 @@ ships with the site, alongside a copy of the licence.
 
 ## Shared knife
 
-The knife geometry, photographic walnut and steel materials come from `@rubenvieira/knife-atelier` 1.3.0. Its immutable archive URL and integrity are pinned in `package.json` and `package-lock.json`. Update both together for a collection revision; author knife geometry in Knife Atelier. Local parent transforms adapt the model to this experiment’s cutting frame.
+The knife geometry, photographic walnut and steel materials come from `@rubenvieira/knife-atelier` 1.3.0. The identical compiled archive is checked in under `vendor/`, with its version and integrity pinned in `package.json` and `package-lock.json`. Play builds need no extra network request or private credential. Update both together for a collection revision; author knife geometry in Knife Atelier. Local parent transforms adapt the model to this experiment’s cutting frame.
