@@ -2477,7 +2477,9 @@ fn yarnLook(L: LayerR, layerIdx: u32, fam: u32, yarn: i32, float_: i32, along: f
     let base = select(vec3<f32>(0.36, 0.015, 0.03), vec3<f32>(0.5, 0.02, 0.045), fam == 1u);
     let sheen = pow(crown, 6.0);
     let v = 1.0 + (0.08 * hash2f(seedY, 3u) - 0.04) * rYarn;
-    var alb = (base * (0.7 + 0.5 * crown) + vec3<f32>(0.95, 0.55, 0.55) * 0.55 * sheen) * v;
+    // only a little of the sheen is fixed to the crown: the filament highlight (yarnOptics) carries
+    // the rest and moves with the light, so the satin stays crimson away from it
+    var alb = (base * (0.7 + 0.5 * crown) + vec3<f32>(0.95, 0.55, 0.55) * 0.18 * sheen) * v;
     alb = mix(alb, vec3<f32>(0.72, 0.26, 0.3), 0.3 * loose + 0.25 * wear);
     o.albedo = clamp(alb, vec3<f32>(0.0), vec3<f32>(1.0));
     o.fuzz = 0.04 + 0.2 * wear + 0.15 * loose;
@@ -2527,7 +2529,9 @@ fn yarnLook(L: LayerR, layerIdx: u32, fam: u32, yarn: i32, float_: i32, along: f
     let v = 1.0 + (0.1 * hash2f(seedY, 3u) - 0.05) * rYarn;
     let warp = fam == 1u;
     let base = select(vec3<f32>(0.42, 0.3, 0.08), vec3<f32>(0.72, 0.5, 0.12), warp);
-    var alb = (base * (0.55 + 0.6 * crown) + vec3<f32>(1.0, 0.92, 0.6) * select(0.15, 0.75, warp) * sheen) * v;
+    // metal reflects more than it scatters: a deeper gold body, with the glint mostly left to the
+    // moving metallic highlight (yarnOptics)
+    var alb = (base * (0.4 + 0.45 * crown) + vec3<f32>(1.0, 0.86, 0.5) * select(0.1, 0.3, warp) * sheen) * v;
     alb = mix(alb, vec3<f32>(0.6, 0.45, 0.15), 0.3 * loose + 0.2 * wear);
     o.albedo = clamp(alb, vec3<f32>(0.0), vec3<f32>(1.2));
     o.fuzz = 0.02 + 0.15 * loose;
@@ -2670,6 +2674,64 @@ fn fiberShade(N: vec3<f32>, T: vec3<f32>, V: vec3<f32>, Ldir: vec3<f32>, albedo:
   let sheenCol = mix(albedo * 2.5, vec3<f32>(0.30, 0.36, 0.50), 0.5);
   let sheen = sheenCol * fuzz * 0.22 * D * vis * lam;
   return diff + spec + sheen;
+}
+
+// Optics of a material's yarns beyond fiberShade's spun-fibre response (material id, family 1 = warp):
+// x = strength of a filament highlight, y = its longitudinal width (sin-angle units), z = how much the
+// highlight takes the yarn's colour (1 = metal), w = share of light passed through the yarn (sheer).
+// Fitted qualitatively, like the materials themselves. Shot silk (10) keeps its own fitted lobes.
+fn yarnOptics(material: u32, fam: u32) -> vec4<f32> {
+  switch material {
+    // silk satin: long, untwisted filament floats; the highlight carries some of the dye
+    case 3u: { return vec4<f32>(0.12, 0.14, 0.45, 0.08); }
+    // linen: flax lustre along the yarn, a thin canvas
+    case 4u: { return vec4<f32>(0.012, 0.28, 0.0, 0.08); }
+    // chiffon: crepe twist spreads a faint silk highlight; very sheer
+    case 5u: { return vec4<f32>(0.02, 0.22, 0.3, 0.3); }
+    // gauze: open, fluffy cotton lets light through
+    case 6u: { return vec4<f32>(0.0, 0.3, 0.0, 0.22); }
+    // lame: metallic foil warp, dull gold weft
+    case 7u: { return select(vec4<f32>(0.05, 0.2, 0.6, 0.02), vec4<f32>(0.22, 0.1, 1.0, 0.0), fam == 1u); }
+    // ballistic nylon: hard filament highlight on black
+    case 8u: { return vec4<f32>(0.04, 0.16, 0.0, 0.0); }
+    // madras: thin cotton
+    case 9u: { return vec4<f32>(0.0, 0.3, 0.0, 0.1); }
+    // shot silk: its own fitted lobes; a thin silk
+    case 10u: { return vec4<f32>(0.0, 0.3, 0.0, 0.08); }
+    // ripstop nylon: thin filament cloth
+    case 11u: { return vec4<f32>(0.035, 0.18, 0.15, 0.12); }
+    // denim, burlap, tartan: spun yarns in a dense or heavy weave (light passes only through the gaps)
+    default: { return vec4<f32>(0.0, 0.3, 0.0, 0.0); }
+  }
+}
+
+// Filament highlight times cos for one light: the longitudinal (Marschner R) lobe of a smooth fibre,
+// a Gaussian in sin(thetaI) + sin(thetaR) of the given width, with a cylinder's cos(phi / 2)
+// azimuthal spread. It follows the yarn direction, so it sweeps across folds as the cloth moves.
+fn filamentGloss(N: vec3<f32>, T: vec3<f32>, V: vec3<f32>, Ldir: vec3<f32>, width: f32) -> f32 {
+  let TL = dot(T, Ldir);
+  let TV = dot(T, V);
+  let s = TL + TV;
+  let lobe = exp(-(s * s) / (2.0 * width * width));
+  let cosPhi = clamp(dot(normalize(Ldir - TL * T + 1e-5 * N), normalize(V - TV * T + 1e-5 * N)), -1.0, 1.0);
+  return lobe * sqrt(0.5 + 0.5 * cosPhi) * max(dot(N, Ldir) + 0.1, 0.0) / (2.0 * PI * width);
+}
+
+// The colour a highlight takes: white for a dielectric fibre, the yarn's own hue for metal.
+fn glossTint(albedo: vec3<f32>, colour: f32) -> vec3<f32> {
+  return mix(vec3<f32>(1.0), albedo / max(max(albedo.r, albedo.g), max(albedo.b, 1e-3)), colour);
+}
+
+// Light from the key and the overhead lamp on the far side of the cloth that its yarns pass on
+// diffusely (sheer weaves glow when lit from behind). Nf faces the viewer; the shadow lookups are
+// taken from the lit side. Light through the open weave is the coverage, not this.
+fn backLight(world: vec3<f32>, Nf: vec3<f32>, key: vec4<f32>, albedo: vec3<f32>) -> vec3<f32> {
+  var E = vec3<f32>(0.0);
+  let kb = -dot(Nf, key.xyz);
+  if (kb > 0.0) { E += key.w * kb * shadowFactor(world, -Nf) * F.keyColor.rgb; }
+  let ob = -dot(Nf, F.overDir.xyz);
+  if (ob > 0.0) { E += ob * F.overColor.rgb * shadowOver(world, -Nf); }
+  return albedo * E * (1.0 / PI);
 }
 
 // Shot silk: a fitted longitudinal dyed-scattering lobe for each yarn family.
@@ -3413,6 +3475,7 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
   var groove = 0.0;
   var cnt = 0.0;
   var shotAcc = vec3<f32>(0.0);
+  var glossAcc = vec3<f32>(0.0);
   var mask = 0u;
   for (var k = 0u; k < 4u; k++) {
     if (lodTile >= 1.0) { break; }
@@ -3477,10 +3540,19 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
     let hn = mix(clamp((sgn * h + hTop) / (2.0 * hTop), 0.0, 1.0), 0.7, rim.rim);
     // interstices between floats (where the weft shows) are deep and shadowed by the neighbours
     let ao = weaveOcclusion(hn) * rim.ao;
+    let tangent = normalize(cos(tw) * axis + sin(tw) * cross(Ny, axis));
+    let optics = yarnOptics(LR.refine.w, hit.fam);
+    if (optics.x > 0.0) {
+      // A filament highlight is lit per sample too: averaging warp and weft directions first
+      // would smear its narrow lobe into a diagonal one.
+      let tint = glossTint(albedo, optics.z) * optics.x;
+      glossAcc += tint * (filamentGloss(Ny, tangent, Vv, key.xyz, optics.y) * (key.w * sh) * F.keyColor.rgb
+        + filamentGloss(Ny, tangent, Vv, F.overDir.xyz, optics.y) * over);
+      if (cam.w > 0.0) { glossAcc += tint * filamentGloss(Ny, tangent, Vv, cam.xyz, optics.y) * cam.w * F.torchColor.rgb; }
+    }
     if (LR.refine.w == 10u) {
       // Two differently dyed yarn families must be lit before averaging.
       // Averaging their orthogonal axes first erases shot silk's color shift.
-      let tangent = normalize(cos(tw) * axis + sin(tw) * cross(Ny, axis));
       let dyed = albedo * mix(0.55, 1.0, ao);
       let hair = look.fuzz + rimFuzz + 0.5 * dmg;
       shotAcc += shotSilkShade(Ny, tangent, Vv, key.xyz, dyed, hair) * (key.w * sh) * F.keyColor.rgb
@@ -3513,6 +3585,9 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
     }
     // loose fibres bridging the grooves: a faint haze lifts the deepest points
     acc = mix(acc, (hazeE * 0.06 + amb * 0.6) * vec3<f32>(0.32, 0.36, 0.48), 0.12 * groove * inv * fuzz * inv);
+    acc += glossAcc * inv;
+    let through = yarnOptics(LR.refine.w, 1u).w;
+    if (through > 0.0) { acc += through * backLight(in.world, Nf, key, albDirect * inv); }
     acc *= cnt;
   }
   var color = acc / max(cnt, 1.0);
@@ -3543,6 +3618,19 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
     let albD = albedo * mix(0.55, 1.0, ao);
     var ct = fiberShade(Ny, Tf, Vv, key.xyz, albD, fz) * (key.w * sh) * F.keyColor.rgb + fiberShade(Ny, Tf, Vv, F.overDir.xyz, albD, fz) * over + amb * albedo * ao;
     if (cam.w > 0.0) { ct += fiberShade(Ny, Tf, Vv, cam.xyz, albD, fz) * cam.w * F.torchColor.rgb; }
+    // the filament highlight of each family along its own direction, in the share of the face it covers
+    let warpOptics = yarnOptics(LR.refine.w, 1u);
+    let weftOptics = yarnOptics(LR.refine.w, 0u);
+    if (max(warpOptics.x, weftOptics.x) > 0.0) {
+      let warpG = normalize(cos(LR.warp.w) * Tv + sin(LR.warp.w) * cross(Ny, Tv));
+      let weftG = normalize(cos(LR.weft.w) * Tu + sin(LR.weft.w) * cross(Ny, Tu));
+      let warpTint = glossTint(lw.albedo, warpOptics.z) * warpOptics.x * wf;
+      let weftTint = glossTint(lf.albedo, weftOptics.z) * weftOptics.x * (1.0 - wf);
+      ct += warpTint * (filamentGloss(Ny, warpG, Vv, key.xyz, warpOptics.y) * (key.w * sh) * F.keyColor.rgb
+          + filamentGloss(Ny, warpG, Vv, F.overDir.xyz, warpOptics.y) * over + filamentGloss(Ny, warpG, Vv, cam.xyz, warpOptics.y) * cam.w * F.torchColor.rgb)
+        + weftTint * (filamentGloss(Ny, weftG, Vv, key.xyz, weftOptics.y) * (key.w * sh) * F.keyColor.rgb
+          + filamentGloss(Ny, weftG, Vv, F.overDir.xyz, weftOptics.y) * over + filamentGloss(Ny, weftG, Vv, cam.xyz, weftOptics.y) * cam.w * F.torchColor.rgb);
+    }
     if (LR.refine.w == 10u) {
       let warpT = normalize(cos(LR.warp.w) * Tv + sin(LR.warp.w) * cross(Ny, Tv));
       let weftT = normalize(cos(LR.weft.w) * Tu + sin(LR.weft.w) * cross(Ny, Tu));
@@ -3560,6 +3648,7 @@ fn fsMain(in: VOut, @builtin(front_facing) ff: bool) -> FsOut {
       ct = mix(weftLight, warpLight, wf);
     }
     ct = mix(ct, (hazeE * 0.06 + amb * 0.6) * vec3<f32>(0.32, 0.36, 0.48), 0.12 * (1.0 - ao) * fz);
+    if (warpOptics.w > 0.0) { ct += warpOptics.w * backLight(in.world, Nf, key, albD); }
     color = select(mix(color, ct, lodTile), ct, cnt == 0.0);
     if (lodTile >= 1.0) {
       // coverage of the filtered cloth: holes where both families are gone, dithered over the samples
@@ -5476,6 +5565,14 @@ fn fsThread(in: VOut) -> @location(0) vec4<f32> {
   var c = fiberShade(N, Tf, V, key.xyz, look.albedo, look.fuzz + 0.25) * (key.w * sh) * F.keyColor.rgb + overShade(N, Tf, V, look.albedo, look.fuzz + 0.25, in.world, N) + amb * look.albedo * ao;
   let cam = torchLight(in.world);
   if (cam.w > 0.0) { c += fiberShade(N, Tf, V, cam.xyz, look.albedo, look.fuzz + 0.25) * cam.w * F.torchColor.rgb; }
+  // a freed filament yarn keeps its highlight (a loose lame thread still glints)
+  let optics = yarnOptics(LR.refine.w, fam);
+  if (optics.x > 0.0) {
+    let tint = glossTint(look.albedo, optics.z) * optics.x;
+    c += tint * (filamentGloss(N, Tf, V, key.xyz, optics.y) * (key.w * sh) * F.keyColor.rgb
+      + filamentGloss(N, Tf, V, F.overDir.xyz, optics.y) * F.overColor.rgb * shadowOver(in.world, N)
+      + filamentGloss(N, Tf, V, cam.xyz, optics.y) * cam.w * F.torchColor.rgb);
+  }
   let uv = select(vec2<f32>(f32(in.id.x), in.c), vec2<f32>(in.c, f32(in.id.x)), in.id.y == 0u);
   return vec4<f32>(burnColour(c, burnAt(in.id.z, uv)), in.alpha);
 }
@@ -12631,9 +12728,27 @@ function G(e, t = 0, n = 0) {
 function Lt(e) {
   return e * e * e * (e * (e * 6 - 15) + 10);
 }
+// Gradient directions of the scene noise. It hashes only the int32 values of seed and corner, and
+// neighbouring samples share corners, so a direct-mapped cache keyed on those int32 values returns
+// the same cos/sin without rehashing: the woven scene (and every drape hash) stays bit-identical
+// while weaving runs about 1.7x faster. Empty slots hold the true direction of their fill key.
+const RT_SLOTS = 1 << 14,
+  RT_EMPTY = -2147483648,
+  rtKeys = new Int32Array(3 * RT_SLOTS).fill(RT_EMPTY),
+  rtDirs = new Float64Array(2 * RT_SLOTS);
+{
+  const a = (It(RT_EMPTY, RT_EMPTY, RT_EMPTY) / 4294967296) * Math.PI * 2;
+  for (let s = 0; s < RT_SLOTS; s++) ((rtDirs[2 * s] = Math.cos(a)), (rtDirs[2 * s + 1] = Math.sin(a)));
+}
 function Rt(e, t, n, r, i) {
-  let a = (It(e, t, n) / 4294967296) * Math.PI * 2;
-  return Math.cos(a) * r + Math.sin(a) * i;
+  let s = (Math.imul(e, 73856093) ^ Math.imul(t, 19349663) ^ Math.imul(n, 83492791)) & (RT_SLOTS - 1),
+    k = 3 * s;
+  if (rtKeys[k] !== e || rtKeys[k + 1] !== t || rtKeys[k + 2] !== n) {
+    let a = (It(e, t, n) / 4294967296) * Math.PI * 2;
+    ((rtKeys[k] = e), (rtKeys[k + 1] = t), (rtKeys[k + 2] = n));
+    ((rtDirs[2 * s] = Math.cos(a)), (rtDirs[2 * s + 1] = Math.sin(a)));
+  }
+  return rtDirs[2 * s] * r + rtDirs[2 * s + 1] * i;
 }
 function zt(e, t, n) {
   let r = Math.floor(t),
@@ -15427,6 +15542,9 @@ const FIST = {
   clawRadius: 0.0015,
 };
 const AIR = { radius: 0.09, speed: 8, referenceZ: -0.02, follow: 0.035, attack: 0.06 };
+// Cloth whose fastest node moves faster than this (m/s) is presented at 60 Hz: at 30 Hz it would
+// step about 2 mm a frame, a visible judder in a swing. Rest detection uses 0.003 m/s.
+const LIVELY_SPEED = 0.05;
 const Q = Dt.h,
   Rn = (e) => performance.timeOrigin + e,
   $ = new (class {
@@ -15522,6 +15640,8 @@ const Q = Dt.h,
     substepsDone = 0;
     gpuFrameTime = 0;
     gpuFrameSamples = 0;
+    // fastest node speed (m/s) at the last rest probe
+    motion = 0;
     async init(t, r, i, a, o) {
       ((this.canvas = t), X({ type: `status`, state: `loading` }));
       // the settled rest state of this fabric (see dev op `drape`; a stale or missing file just settles here)
@@ -16839,6 +16959,7 @@ const Q = Dt.h,
               i = new Uint32Array(e, 0, 2),
               counts = [i[0], i[1]],
               a = counts[0] + counts[1];
+            const speed = new Float32Array(e)[2];
             let force = 0;
             if (measureContact && this.contact === contact && contact.epoch === this.releaseEpoch) {
               const point = new Float32Array(e, 240, 4);
@@ -16879,6 +17000,7 @@ const Q = Dt.h,
             t.unmap();
             this.probeBusy = !1;
             if (epoch !== this.releaseEpoch) return;
+            this.motion = Number.isFinite(speed) ? speed : 0;
             if (measureLoad) X({ type: `tension`, force });
             const ruptures = Math.max(0, counts[0] - this.damageCounts[0]);
             const pulledOut = Math.max(0, counts[1] - this.damageCounts[1]);
@@ -16903,8 +17025,10 @@ const Q = Dt.h,
       if (this.driven) return;
       let t = Math.max(0, (e - this.lastFrame) / 1e3),
         n = Math.min(0.1, t);
-      // Spend frames where they matter: direct interaction can run at 60 Hz. The GPU queue
-      // still gates every frame, and the solver retains its fixed 120 Hz timestep.
+      // Spend frames where they matter: direct interaction, wind, flames and cloth still visibly
+      // swinging (its fastest node above LIVELY_SPEED at the last rest probe) run at 60 Hz; cloth
+      // creeping to rest keeps 30 Hz. The GPU queue still gates every frame, and the solver
+      // retains its fixed 120 Hz timestep.
       const interacting =
         this.down.size ||
         this.strokes.size ||
@@ -16913,7 +17037,8 @@ const Q = Dt.h,
         this.airJets.size ||
         this.firePoints.size ||
         this.threadGesture;
-      const interval = interacting ? 1000 / 60 - 2 : 1000 / 30 - 2;
+      const lively = interacting || this.body.windOn || this.fire?.enabled || this.motion > LIVELY_SPEED;
+      const interval = lively ? 1000 / 60 - 2 : 1000 / 30 - 2;
       if (this.inFlight || (!this.asleep && !this.paused && e - this.lastPresent < interval)) return;
       const workStarted = performance.now();
       const measureWork =
@@ -17227,9 +17352,14 @@ In.onmessage = (t) => {
       break;
     case 'knife-assets':
       if ($.renderer) {
-        if ($.knifeView) { $.renderer.extras = $.renderer.extras.filter(v => v !== $.knifeView); $.knifeView.dispose(); }
-        $.knifeView = new AtelierKnifeRenderer($.renderer, n.parts, n.metadata); $.renderer.extras.push($.knifeView);
-        $.dirty = true; X({ type: 'knife-ready' });
+        if ($.knifeView) { $.renderer.extras = $.renderer.extras.filter(v => v !== $.knifeView); $.knifeView.dispose(); $.knifeView = null; }
+        // The knife's model is decoration: if its textures cannot be uploaded, the knife still cuts.
+        try {
+          $.knifeView = new AtelierKnifeRenderer($.renderer, n.parts, n.metadata); $.renderer.extras.push($.knifeView);
+          $.dirty = true; X({ type: 'knife-ready' });
+        } catch (error) {
+          console.warn(`The knife model could not be prepared.`, error);
+        }
       }
       break;
     case `resize`:

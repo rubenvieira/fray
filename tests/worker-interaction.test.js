@@ -1011,6 +1011,27 @@ test("active interactions render at 60Hz while idle cloth retains 30Hz and GPU b
   }
 });
 
+test("wind, flames and visibly swinging cloth render at 60Hz while cloth creeping to rest keeps 30Hz", async () => {
+  for (const state of ["wind", "fire", "swinging", "creeping"]) {
+    const f = fixture();
+    if (state === "wind") f.engine.body.windOn = true;
+    if (state === "fire") f.engine.fire = { enabled: true, step() {} };
+    if (state === "swinging") f.engine.motion = 0.2;
+    if (state === "creeping") f.engine.motion = 0.01;
+    f.setNow(1017);
+    f.engine.frame(1017);
+    assert.equal(f.frames.length, state === "creeping" ? 0 : 1, state);
+    if (state === "creeping") {
+      f.engine.frame(1034);
+      assert.equal(f.frames.length, 1, "the 30Hz interval still presents settling cloth");
+    }
+    f.setNow(1030);
+    f.completions[0].resolve();
+    await flush();
+    assert.equal(f.engine.gpuFrameSamples, 0, `${state} frames are not interaction quality evidence`);
+  }
+});
+
 test("interaction timing measures submitted work completion rather than elapsed animation-frame time", async () => {
   for (const active of ["down", "strokes", "claws", "fists"]) {
     const f = fixture();
