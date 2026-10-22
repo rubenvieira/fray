@@ -241,7 +241,10 @@ tests/audio-preparation.test.js  sample-output parity, finite normalization and 
    and multiplied into the yarns' albedo.
 9. Fabrics are presets (`FABRICS` in `src/worker.js`): yarn mechanics, weave (twill repeat / warp-over), node
    bundling and wear. The renderer branches on the material id in the layer uniform for the yarn, rim-fibre
-   and fray colours. Switching fabric restarts the worker on a fresh canvas so the old GPU device is released.
+   and fray colours, for the filament highlight of silk, nylon and lamé yarns (`yarnOptics`: a longitudinal
+   lobe along each yarn, lit per sample so warp and weft keep their own directions, so it sweeps across
+   folds as the cloth moves), and for the light sheer weaves pass on when lit from behind.
+   Switching fabric restarts the worker on a fresh canvas so the old GPU device is released.
    Hanging frees the side and lower borders, rotates the tool frame toward the vertical fabric,
    uses a top rail and lowers the colliding floor. The initial 4 mm pleat takes up width slack; all
    subsequent folds come from the solver. Air pressure stays bounded and follows the pointer ray
@@ -346,9 +349,10 @@ This program is free software: you can redistribute it and/or modify it under th
 General Public License, version 3 only, as published by the Free Software Foundation. It is
 distributed WITHOUT ANY WARRANTY; see [LICENSE](LICENSE) for the full terms.
 
-**Modified by Ruben Vieira, 12–16 October 2026:** knife, claw, fist, pin, air, unpick and fire tools;
+**Modified by Ruben Vieira, 12–22 October 2026:** knife, claw, fist, pin, air, unpick and fire tools;
 eleven more fabrics and photo printing; the hanging setup, wind, slow motion and shake; framing,
-recording and the Collection; and the shared Play interface. The commit history records every change.
+recording and the Collection; filament highlights and back light; faster loading; and the shared Play
+interface. The commit history records every change.
 
 Bundled third-party software and its notices are listed in [public/NOTICE.txt](public/NOTICE.txt), which
 ships with the site, alongside a copy of the licence.
