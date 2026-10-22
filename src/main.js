@@ -1,4 +1,3 @@
-import { prepareAtelierKnife } from './atelier-knife.js';
 import "./play-chrome-mount.js";
 import { ADDITIONAL_MATERIALS } from "./material-library.js";
 import { CAPTURE_FORMATS, captureSize, captureCrop } from "./capture-format.js";
@@ -823,6 +822,7 @@ function setTool(e) {
   document.querySelector(`.guide-description`).textContent = toolGuide(e)[1];
   if (activeExperiment) document.querySelector(`.experiment-tip`).textContent = toolGuide(e)[1];
   C({ type: `tool`, tool: e });
+  if (e === `blade`) installAtelierKnife(S);
 }
 function updateEffects() {
   const summary = document.querySelector(`.effect-summary`);
@@ -894,11 +894,46 @@ window.__fabricDev = (e) =>
     (F.set(n, t), C({ type: `dev`, id: n, ...e }));
   });
 new Promise((e) => (I = e));
-async function installAtelierKnife(worker) {
-  const assets = await prepareAtelierKnife();
-  if (worker !== S) return;
-  window.frayKnifeLibrary = { ...assets.metadata, ready: false };
-  worker.postMessage({ type: 'knife-assets', parts: assets.parts, metadata: assets.metadata }, assets.transfers);
+// The shared knife (three.js and its photographic woods, about 2 MB) is not needed to start the
+// cloth, so it loads on demand: at once when the knife is chosen, otherwise in idle time after the
+// fabric runs, never while a pointer is down. Until then the knife still cuts, without its model.
+const heldPointers = new Set();
+for (const type of [`pointerdown`, `pointerup`, `pointercancel`])
+  window.addEventListener(
+    type,
+    (event) => (type === `pointerdown` ? heldPointers.add(event.pointerId) : heldPointers.delete(event.pointerId)),
+    true,
+  );
+window.addEventListener(`blur`, () => heldPointers.clear());
+let knifeModule = null;
+let knifeTimer = 0;
+function installAtelierKnife(worker) {
+  if (!worker || worker !== S || worker.atelierInstalled || !engineReady) return;
+  worker.atelierInstalled = true;
+  clearTimeout(knifeTimer);
+  (knifeModule ??= import(`./atelier-knife.js`))
+    .then(({ prepareAtelierKnife }) => prepareAtelierKnife())
+    .then((assets) => {
+      if (worker !== S) return;
+      window.frayKnifeLibrary = { ...assets.metadata, ready: false };
+      worker.postMessage({ type: 'knife-assets', parts: assets.parts, metadata: assets.metadata }, assets.transfers);
+    })
+    .catch((error) => {
+      // A missing model never stops the fabric; choosing the knife tries again.
+      knifeModule = null;
+      worker.atelierInstalled = false;
+      console.warn(`The knife model could not be loaded.`, error);
+    });
+}
+function scheduleAtelierKnife(worker) {
+  clearTimeout(knifeTimer);
+  knifeTimer = setTimeout(() => {
+    if (worker !== S || worker.atelierInstalled) return;
+    if (heldPointers.size) return scheduleAtelierKnife(worker);
+    const install = () => (heldPointers.size ? scheduleAtelierKnife(worker) : installAtelierKnife(worker));
+    if (typeof requestIdleCallback === `function`) requestIdleCallback(install, { timeout: 2000 });
+    else install();
+  }, 1500);
 }
 function onWorkerMessage(e) {
   let t = e.data;
@@ -925,7 +960,7 @@ function onWorkerMessage(e) {
       document.querySelector(`.error-panel`).hidden = true;
       h.classList.remove(`visible`);
       I();
-      if (!S.atelierInstalled) { S.atelierInstalled = true; void installAtelierKnife(S).catch(onWorkerError); }
+      scheduleAtelierKnife(S);
       // The worker ignores prints until its renderer is ready.
       if (printCanvas) sendPrint();
       if (pendingExperiment) finishExperiment();

@@ -12631,9 +12631,27 @@ function G(e, t = 0, n = 0) {
 function Lt(e) {
   return e * e * e * (e * (e * 6 - 15) + 10);
 }
+// Gradient directions of the scene noise. It hashes only the int32 values of seed and corner, and
+// neighbouring samples share corners, so a direct-mapped cache keyed on those int32 values returns
+// the same cos/sin without rehashing: the woven scene (and every drape hash) stays bit-identical
+// while weaving runs about 1.7x faster. Empty slots hold the true direction of their fill key.
+const RT_SLOTS = 1 << 14,
+  RT_EMPTY = -2147483648,
+  rtKeys = new Int32Array(3 * RT_SLOTS).fill(RT_EMPTY),
+  rtDirs = new Float64Array(2 * RT_SLOTS);
+{
+  const a = (It(RT_EMPTY, RT_EMPTY, RT_EMPTY) / 4294967296) * Math.PI * 2;
+  for (let s = 0; s < RT_SLOTS; s++) ((rtDirs[2 * s] = Math.cos(a)), (rtDirs[2 * s + 1] = Math.sin(a)));
+}
 function Rt(e, t, n, r, i) {
-  let a = (It(e, t, n) / 4294967296) * Math.PI * 2;
-  return Math.cos(a) * r + Math.sin(a) * i;
+  let s = (Math.imul(e, 73856093) ^ Math.imul(t, 19349663) ^ Math.imul(n, 83492791)) & (RT_SLOTS - 1),
+    k = 3 * s;
+  if (rtKeys[k] !== e || rtKeys[k + 1] !== t || rtKeys[k + 2] !== n) {
+    let a = (It(e, t, n) / 4294967296) * Math.PI * 2;
+    ((rtKeys[k] = e), (rtKeys[k + 1] = t), (rtKeys[k + 2] = n));
+    ((rtDirs[2 * s] = Math.cos(a)), (rtDirs[2 * s + 1] = Math.sin(a)));
+  }
+  return rtDirs[2 * s] * r + rtDirs[2 * s + 1] * i;
 }
 function zt(e, t, n) {
   let r = Math.floor(t),
@@ -15427,6 +15445,9 @@ const FIST = {
   clawRadius: 0.0015,
 };
 const AIR = { radius: 0.09, speed: 8, referenceZ: -0.02, follow: 0.035, attack: 0.06 };
+// Cloth whose fastest node moves faster than this (m/s) is presented at 60 Hz: at 30 Hz it would
+// step about 2 mm a frame, a visible judder in a swing. Rest detection uses 0.003 m/s.
+const LIVELY_SPEED = 0.05;
 const Q = Dt.h,
   Rn = (e) => performance.timeOrigin + e,
   $ = new (class {
@@ -15522,6 +15543,8 @@ const Q = Dt.h,
     substepsDone = 0;
     gpuFrameTime = 0;
     gpuFrameSamples = 0;
+    // fastest node speed (m/s) at the last rest probe
+    motion = 0;
     async init(t, r, i, a, o) {
       ((this.canvas = t), X({ type: `status`, state: `loading` }));
       // the settled rest state of this fabric (see dev op `drape`; a stale or missing file just settles here)
@@ -16839,6 +16862,7 @@ const Q = Dt.h,
               i = new Uint32Array(e, 0, 2),
               counts = [i[0], i[1]],
               a = counts[0] + counts[1];
+            const speed = new Float32Array(e)[2];
             let force = 0;
             if (measureContact && this.contact === contact && contact.epoch === this.releaseEpoch) {
               const point = new Float32Array(e, 240, 4);
@@ -16879,6 +16903,7 @@ const Q = Dt.h,
             t.unmap();
             this.probeBusy = !1;
             if (epoch !== this.releaseEpoch) return;
+            this.motion = Number.isFinite(speed) ? speed : 0;
             if (measureLoad) X({ type: `tension`, force });
             const ruptures = Math.max(0, counts[0] - this.damageCounts[0]);
             const pulledOut = Math.max(0, counts[1] - this.damageCounts[1]);
@@ -16903,8 +16928,10 @@ const Q = Dt.h,
       if (this.driven) return;
       let t = Math.max(0, (e - this.lastFrame) / 1e3),
         n = Math.min(0.1, t);
-      // Spend frames where they matter: direct interaction can run at 60 Hz. The GPU queue
-      // still gates every frame, and the solver retains its fixed 120 Hz timestep.
+      // Spend frames where they matter: direct interaction, wind, flames and cloth still visibly
+      // swinging (its fastest node above LIVELY_SPEED at the last rest probe) run at 60 Hz; cloth
+      // creeping to rest keeps 30 Hz. The GPU queue still gates every frame, and the solver
+      // retains its fixed 120 Hz timestep.
       const interacting =
         this.down.size ||
         this.strokes.size ||
@@ -16913,7 +16940,8 @@ const Q = Dt.h,
         this.airJets.size ||
         this.firePoints.size ||
         this.threadGesture;
-      const interval = interacting ? 1000 / 60 - 2 : 1000 / 30 - 2;
+      const lively = interacting || this.body.windOn || this.fire?.enabled || this.motion > LIVELY_SPEED;
+      const interval = lively ? 1000 / 60 - 2 : 1000 / 30 - 2;
       if (this.inFlight || (!this.asleep && !this.paused && e - this.lastPresent < interval)) return;
       const workStarted = performance.now();
       const measureWork =
@@ -17227,9 +17255,14 @@ In.onmessage = (t) => {
       break;
     case 'knife-assets':
       if ($.renderer) {
-        if ($.knifeView) { $.renderer.extras = $.renderer.extras.filter(v => v !== $.knifeView); $.knifeView.dispose(); }
-        $.knifeView = new AtelierKnifeRenderer($.renderer, n.parts, n.metadata); $.renderer.extras.push($.knifeView);
-        $.dirty = true; X({ type: 'knife-ready' });
+        if ($.knifeView) { $.renderer.extras = $.renderer.extras.filter(v => v !== $.knifeView); $.knifeView.dispose(); $.knifeView = null; }
+        // The knife's model is decoration: if its textures cannot be uploaded, the knife still cuts.
+        try {
+          $.knifeView = new AtelierKnifeRenderer($.renderer, n.parts, n.metadata); $.renderer.extras.push($.knifeView);
+          $.dirty = true; X({ type: 'knife-ready' });
+        } catch (error) {
+          console.warn(`The knife model could not be prepared.`, error);
+        }
       }
       break;
     case `resize`:

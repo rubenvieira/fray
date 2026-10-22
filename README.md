@@ -187,6 +187,7 @@ tests/grip-release.test.js immediate force release while topology cleanup comple
 tests/yarn-load-sharing.test.js  nonlinear crack-tip load transfer and cohesive softening
 tests/render-budget.test.js     render sizing, sustained load, recovery and capture reset
 tests/worker-interaction.test.js  async picking, stroke paths, releases, frame pacing and damage reporting
+tests/scene-noise.test.js  cached scene-noise gradients equal the hashed directions bit for bit
 tests/tear-feedback.test.js      touch-only fracture pulses, cancellation and release tails
 tests/worklet.test.js      fracture-energy audio, release decay, reset and worker reconnection
 tests/audio-preparation.test.js  sample-output parity, finite normalization and worker cleanup
@@ -354,4 +355,4 @@ ships with the site, alongside a copy of the licence.
 
 ## Shared knife
 
-The knife geometry, photographic walnut and steel materials come from `@rubenvieira/knife-atelier` 1.3.0. The identical compiled archive is checked in under `vendor/`, with its version and integrity pinned in `package.json` and `package-lock.json`. Play builds need no extra network request or private credential. Update both together for a collection revision; author knife geometry in Knife Atelier. Local parent transforms adapt the model to this experiment’s cutting frame.
+The knife geometry, photographic walnut and steel materials come from `@rubenvieira/knife-atelier` 1.3.0. The identical compiled archive is checked in under `vendor/`, with its version and integrity pinned in `package.json` and `package-lock.json`. Play builds need no extra network request or private credential. The knife (three.js and its woods, about 1.6 MB compressed) is a separate chunk loaded on demand: at once when the knife is chosen, otherwise in idle time once the fabric runs and no pointer is down. It is built once per page and copied to each fabric's worker; without it the knife still cuts. Update both together for a collection revision; author knife geometry in Knife Atelier. Local parent transforms adapt the model to this experiment’s cutting frame.

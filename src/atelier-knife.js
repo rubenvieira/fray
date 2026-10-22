@@ -12,8 +12,22 @@ export function meshMaterialGroups(mesh, geometry) {
   return [...batches.values()];
 }
 
+let built = null;
+
 // Main-thread preparation retains the canonical material maps; GPU rendering stays in the cloth worker.
+// The knife is built once per page: a fabric switch starts a new worker, which receives its own copy
+// (transferring detaches the vertex buffers and bitmaps it is given).
 export async function prepareAtelierKnife() {
+  built ??= buildAtelierKnife().catch((error) => {
+    built = null;
+    throw error;
+  });
+  const { parts, metadata } = await built;
+  const copies = await Promise.all(parts.map(async (part) => ({ ...part, vertices: part.vertices.slice(), bitmap: part.bitmap && (await createImageBitmap(part.bitmap)) })));
+  return { parts: copies, transfers: copies.flatMap((part) => (part.bitmap ? [part.vertices.buffer, part.bitmap] : [part.vertices.buffer])), metadata };
+}
+
+async function buildAtelierKnife() {
   await loadKnifeTextures();
   const knife = createKnife('petty', { finish: 'satin', wood: 'walnut' });
   const frame = mountCuttingKnife(knife, { bladeLength: .095, axis: '-x', origin: 'tip' });
@@ -21,7 +35,7 @@ export async function prepareAtelierKnife() {
   frame.updateMatrixWorld(true);
   const tip = knife.localToWorld(new Vector3(...knife.userData.knifeAtelier.tip)).applyMatrix4(pose);
   pose.setPosition(tip.multiplyScalar(-1));
-  const parts = [], transfers = [];
+  const parts = [];
   for (const child of knife.children) {
     if (!(child instanceof Mesh)) continue;
     const geometry = child.geometry.index ? child.geometry.toNonIndexed() : child.geometry.clone();
@@ -37,9 +51,8 @@ export async function prepareAtelierKnife() {
       }
       const bitmap = material.map ? await createImageBitmap(material.map.image) : null;
       parts.push({ vertices, bitmap, color: material.color.toArray(), roughness: material.roughness ?? .6, metal: material.metalness ?? 0 });
-      transfers.push(vertices.buffer); if (bitmap) transfers.push(bitmap);
     }
     geometry.dispose();
   }
-  return { parts, transfers, metadata: frame.userData.knifeLibrary };
+  return { parts, metadata: frame.userData.knifeLibrary };
 }
